@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pdfplumber
+camelot-py[cv]
+rank-bm25
+sentence-transformers
+faiss-cpu

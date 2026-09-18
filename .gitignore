@@ -1,0 +1,16 @@
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Data (raw PDFs are large, don't commit them - or use Git LFS if you want them tracked)
+data/raw_pdfs/
+data/processed/
+
+# OS
+.DS_Store
