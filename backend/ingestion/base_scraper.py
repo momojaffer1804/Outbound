@@ -20,12 +20,12 @@ matching the schema consumed downstream by structured extraction:
 
 Design notes (per project spec):
 - retrieved_date is ALWAYS stamped by the scraper at fetch time. Never inferred
-  from page content.
+from page content.
 - academic_year is extracted from explicit year text on the page (regex over
-  common patterns like "2026/27", "winter semester 2026/27"). If no explicit
-  year string is found, tag as "unknown_year" rather than guess.
+common patterns like "2026/27", "winter semester 2026/27"). If no explicit
+year string is found, tag as "unknown_year" rather than guess.
 - Scrapers never talk to each other or to other modules directly — only
-  api/ sequences ingestion -> extraction -> everything else (modularity rule).
+api/ sequences ingestion -> extraction -> everything else (modularity rule).
 """
 
 from __future__ import annotations
