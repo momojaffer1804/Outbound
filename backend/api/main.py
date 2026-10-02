@@ -7,28 +7,54 @@ talk to each other or to other modules directly -- only api/ sequences
 ingestion -> extraction -> everything else"). Nothing in ingestion/ or
 eligibility/ imports from here or from each other directly.
 
-Endpoint:
+Endpoints:
     POST /eligibility
         body: a JSON profile (see EligibilityRequest below)
         returns: a list of per-university eligibility results, one per
                  registered university, each with overall_status and a
                  full breakdown of individual requirement judgments.
 
+    GET /search?q=...&top_k=5
+        Free-text search over the requirements corpus, for questions like
+        "what language do I need for RWTH?" without knowing the answer
+        lives in a record called `german_test`. Two-stage pipeline:
+        hybrid_retriever.retrieve() casts a wide net (BM25 + embeddings,
+        fused via RRF) over ALL requirement records across every
+        registered university, then reranker.rerank() re-scores that
+        shortlist with a cross-encoder for final precision. Per
+        hybrid_retriever.py's own docstring, this is explicitly NOT used
+        by eligibility-checking (that stays direct dictionary lookup by
+        requirement_type, in the checkers) -- this is a separate,
+        additive feature.
+
+    GET /health
+
 Design notes:
 - Scraper .run() calls hit the LIVE university pages over the network on
   every request. For a v1/demo slice this is acceptable (matches the
   project's "always-current, never-cached-silently" philosophy), but it
-  does mean this endpoint is slow (4 real HTTP fetches per call) and will
-  fail loudly if a university site is down or blocks the request -- that
-  failure is surfaced per-university (see UNIVERSITIES loop below), not
-  used to fail the whole request, so one broken site doesn't take down
-  the other three.
+  does mean these endpoints are slow (N real HTTP fetches per call) and
+  will fail loudly if a university site is down or blocks the request --
+  that failure is surfaced per-university for /eligibility (see
+  UNIVERSITIES loop below), not used to fail the whole request, so one
+  broken site doesn't take down the other three. /search currently has no
+  equivalent per-university isolation -- if ANY scraper fails while
+  building the corpus, the whole search fails. Flagged as a known gap,
+  not fixed here, since /eligibility already established the right
+  pattern and /search should eventually follow it -- left as a documented
+  next step rather than solved speculatively.
 - A results cache (by university, refreshed on some interval) is a natural
   v2 improvement once this is proven end-to-end -- not built now, to keep
   this slice's failure modes easy to reason about (every call is a fresh,
-  honest fetch, nothing silently stale).
-- `country` is included per-university in the response so the frontend can
-  offer a "filter by country" dropdown without needing a separate endpoint.
+  honest fetch, nothing silently stale). This matters MORE for /search
+  than /eligibility, since every search re-scrapes AND re-embeds the full
+  corpus from scratch -- noticeably slower than /eligibility. Acceptable
+  for now, same "prove it works before optimizing" reasoning as elsewhere
+  in this project, but the first thing to fix if /search feels too slow
+  in practice.
+- `country` is included per-university in the /eligibility response so the
+  frontend can offer a "filter by country" dropdown without needing a
+  separate endpoint.
 """
 
 from __future__ import annotations
@@ -37,15 +63,16 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# --- Make sibling packages importable (ingestion/, eligibility/) ---
-# Assumes the standard repo layout: outbound/backend/{ingestion,eligibility,api}/
+# --- Make sibling packages importable (ingestion/, eligibility/, retrieval/) ---
+# Assumes the standard repo layout: outbound/backend/{ingestion,eligibility,api,retrieval}/
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(BACKEND_ROOT / "ingestion"))
 sys.path.append(str(BACKEND_ROOT / "eligibility"))
+sys.path.append(str(BACKEND_ROOT / "retrieval"))
 
 from base_checker import UserProfile  # noqa: E402
 
@@ -58,6 +85,9 @@ from checker_tum import TUMEligibilityChecker  # noqa: E402
 from checker_rwth import RWTHEligibilityChecker  # noqa: E402
 from checker_kaist_ai import KAISTAIEligibilityChecker  # noqa: E402
 from checker_kaist_cs import KAISTCSEligibilityChecker  # noqa: E402
+
+from hybrid_retriever import retrieve as hybrid_retrieve  # noqa: E402
+from reranker import rerank  # noqa: E402
 
 
 app = FastAPI(title="Outbound Eligibility API")
@@ -81,6 +111,12 @@ UNIVERSITIES = [
     (KAISTAIScraper, KAISTAIEligibilityChecker),
     (KAISTCSScraper, KAISTCSEligibilityChecker),
 ]
+
+# Same scraper list, used by /search for building the retrieval corpus.
+# Deliberately the scraper classes only (not paired with checkers) --
+# /search works over raw requirement TEXT, it has no notion of a user
+# profile or eligibility judgment.
+SEARCH_SCRAPERS = [cls for cls, _ in UNIVERSITIES]
 
 
 class EligibilityRequest(BaseModel):
@@ -175,6 +211,56 @@ def check_eligibility(request: EligibilityRequest) -> list[UniversityResultOut]:
             ))
 
     return results
+
+
+class SearchResultOut(BaseModel):
+    university: str
+    program: str
+    requirement_type: str
+    value: str
+    source_url: str
+    source_tier: int
+    academic_year: str
+    extraction_method: str
+    rerank_score: float
+
+
+@app.get("/search", response_model=list[SearchResultOut])
+def search(
+    q: str = Query(..., min_length=1, description="Free-text question, e.g. 'what language do I need for RWTH?'"),
+    top_k: int = Query(5, ge=1, le=20, description="How many results to return after reranking"),
+    retrieve_k: int = Query(15, ge=1, le=50, description="How many candidates hybrid retrieval pulls BEFORE reranking narrows it down"),
+) -> list[SearchResultOut]:
+    """Two-stage search: hybrid_retriever casts a wide net (retrieve_k
+    candidates), reranker narrows that down to the final top_k by actually
+    scoring query+candidate pairs together. retrieve_k is deliberately
+    larger than top_k and exposed as a param rather than hardcoded, since
+    the right ratio between "how wide to search" and "how many to keep"
+    is a tuning knob, not a fixed constant -- see reranker.py's own
+    docstring on why reranking only reorders a SMALL shortlist rather than
+    being run over the entire corpus directly.
+    """
+    all_reqs = []
+    for scraper_cls in SEARCH_SCRAPERS:
+        all_reqs.extend(scraper_cls().run())
+
+    candidates = hybrid_retrieve(q, top_k=retrieve_k, requirements=all_reqs)
+    reranked = rerank(q, [c.requirement for c in candidates], top_k=top_k)
+
+    return [
+        SearchResultOut(
+            university=r.record.university,
+            program=r.record.program,
+            requirement_type=r.record.requirement_type,
+            value=r.record.value,
+            source_url=r.record.source_url,
+            source_tier=r.record.source_tier,
+            academic_year=r.record.academic_year,
+            extraction_method=r.record.extraction_method,
+            rerank_score=r.rerank_score,
+        )
+        for r in reranked
+    ]
 
 
 @app.get("/health")
