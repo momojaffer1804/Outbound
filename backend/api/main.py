@@ -10,9 +10,18 @@ eligibility/ imports from here or from each other directly.
 Endpoints:
     POST /eligibility
         body: a JSON profile (see EligibilityRequest below)
+        optional query param: universities (repeated) -- filter to only the
+                 named universities instead of checking all registered ones.
+                 Matched against each checker's `university` attribute.
         returns: a list of per-university eligibility results, one per
-                 registered university, each with overall_status and a
-                 full breakdown of individual requirement judgments.
+                 checked university, each with overall_status and a full
+                 breakdown of individual requirement judgments.
+
+    GET /universities
+        No scraping, no live network call -- just name + program metadata
+        for every registered university, for building a picker UI fast
+        (e.g. a comparison-view checkbox list) without paying the cost of
+        a full live eligibility check just to show the available options.
 
     GET /search?q=...&top_k=5
         Free-text search over the requirements corpus, for questions like
@@ -119,6 +128,26 @@ UNIVERSITIES = [
 SEARCH_SCRAPERS = [cls for cls, _ in UNIVERSITIES]
 
 
+class UniversityInfoOut(BaseModel):
+    """Lightweight metadata only -- no scraping, no live network call. For
+    building a university picker UI (e.g. a comparison-view checkbox list)
+    without paying the cost of a full live eligibility check just to show
+    the list of available options."""
+    university: str
+    program: str
+
+
+@app.get("/universities", response_model=list[UniversityInfoOut])
+def list_universities() -> list[UniversityInfoOut]:
+    return [
+        UniversityInfoOut(
+            university=getattr(checker_cls, "university", checker_cls.__name__),
+            program=getattr(checker_cls, "program", ""),
+        )
+        for _, checker_cls in UNIVERSITIES
+    ]
+
+
 class EligibilityRequest(BaseModel):
     """Mirrors base_checker.UserProfile field-for-field. Kept as a separate
     Pydantic model (rather than reusing the dataclass directly) so FastAPI
@@ -169,11 +198,37 @@ class UniversityResultOut(BaseModel):
 
 
 @app.post("/eligibility", response_model=list[UniversityResultOut])
-def check_eligibility(request: EligibilityRequest) -> list[UniversityResultOut]:
+def check_eligibility(
+    request: EligibilityRequest,
+    universities: Optional[list[str]] = Query(
+        default=None,
+        description=(
+            "Optional repeated param to filter which universities get "
+            "scraped/checked, e.g. ?universities=TU Munich (TUM)&universities=KAIST. "
+            "Names are matched against each checker's `university` attribute. "
+            "Omit to check all registered universities (default, unchanged "
+            "behavior). NOTE: this param needs the explicit Query() annotation "
+            "below -- without it, FastAPI cannot tell whether this list belongs "
+            "in the query string or the JSON body alongside `request`, and "
+            "returns a confusing 422 'field request missing' error instead of "
+            "a clear one. If this signature is edited later and that error "
+            "reappears, check this annotation is still here first."
+        ),
+    ),
+) -> list[UniversityResultOut]:
     profile = request.to_user_profile()
     results: list[UniversityResultOut] = []
 
-    for scraper_cls, checker_cls in UNIVERSITIES:
+    universities_to_check = UNIVERSITIES
+    if universities:
+        wanted = set(universities)
+        universities_to_check = [
+            (scraper_cls, checker_cls)
+            for scraper_cls, checker_cls in UNIVERSITIES
+            if getattr(checker_cls, "university", None) in wanted
+        ]
+
+    for scraper_cls, checker_cls in universities_to_check:
         try:
             raw_requirements = scraper_cls().run()
             result = checker_cls().check(profile, raw_requirements)
