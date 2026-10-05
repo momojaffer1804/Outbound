@@ -176,3 +176,107 @@ button[type='submit']:disabled {
 .icon {
   font-size: 1.1rem;
 }
+.compare-toggle {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #333;
+  font-size: 0.95rem;
+  color: #eee;
+}
+
+.university-picker {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.compare-hint {
+  margin: 0 0 0.4rem;
+  color: #999;
+  font-size: 0.85rem;
+}
+
+.compare-status {
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.university-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.university-option input:disabled + * ,
+.university-option input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.comparison-table-wrapper {
+  overflow-x: auto;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.comparison-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 600px;
+}
+
+.comparison-table th,
+.comparison-table td {
+  border: 1px solid #333;
+  padding: 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.85rem;
+}
+
+.comparison-table th {
+  background: #2a2a2a;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.comparison-program {
+  color: #999;
+  font-weight: normal;
+  font-size: 0.75rem;
+}
+
+.requirement-label {
+  text-transform: capitalize;
+  color: #ccc;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.comparison-cell {
+  color: #ccc;
+}
+
+.comparison-cell.met { border-left: 3px solid #1a7f37; }
+.comparison-cell.not_met { border-left: 3px solid #c0392b; }
+.comparison-cell.needs_review { border-left: 3px solid #b7791f; }
+.comparison-cell.informational { border-left: 3px solid #4f8cff; }
+.comparison-cell.empty {
+  color: #555;
+  text-align: center;
+}
+
+.comparison-detail {
+  display: block;
+  margin-top: 0.25rem;
+}

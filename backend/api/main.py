@@ -22,6 +22,7 @@ Endpoints:
         for every registered university, for building a picker UI fast
         (e.g. a comparison-view checkbox list) without paying the cost of
         a full live eligibility check just to show the available options.
+        Includes country and active_requirements for frontend dynamic rendering.
 
     GET /search?q=...&top_k=5
         Free-text search over the requirements corpus, for questions like
@@ -135,17 +136,41 @@ class UniversityInfoOut(BaseModel):
     the list of available options."""
     university: str
     program: str
+    country: str
+    active_requirements: list[str]
 
 
 @app.get("/universities", response_model=list[UniversityInfoOut])
 def list_universities() -> list[UniversityInfoOut]:
-    return [
-        UniversityInfoOut(
-            university=getattr(checker_cls, "university", checker_cls.__name__),
-            program=getattr(checker_cls, "program", ""),
+    results = []
+    for _, checker_cls in UNIVERSITIES:
+        uni = getattr(checker_cls, "university", checker_cls.__name__)
+        prog = getattr(checker_cls, "program", "")
+        
+        # To keep this endpoint instant (no live scraping), we assign the known 
+        # active requirements and countries statically here. The frontend uses 
+        # this to instantly render the correct progressive disclosure fields.
+        country = "Unknown"
+        reqs = ["cgpa", "english_test"]
+        
+        if "TUM" in uni or "Munich" in uni:
+            country = "Germany"
+            reqs.extend(["gre", "gate"])
+        elif "RWTH" in uni or "Aachen" in uni:
+            country = "Germany"
+            reqs.extend(["gre", "german_test"])
+        elif "KAIST" in uni or "Seoul" in uni:
+            country = "South Korea"
+            
+        results.append(
+            UniversityInfoOut(
+                university=uni,
+                program=prog,
+                country=country,
+                active_requirements=reqs,
+            )
         )
-        for _, checker_cls in UNIVERSITIES
-    ]
+    return results
 
 
 class EligibilityRequest(BaseModel):
@@ -153,6 +178,8 @@ class EligibilityRequest(BaseModel):
     Pydantic model (rather than reusing the dataclass directly) so FastAPI
     owns request validation/JSON schema, while UserProfile stays a plain
     dataclass the checkers can depend on without a FastAPI/pydantic import."""
+
+    model_config = {"extra": "allow"} # Allows dynamic fields from the frontend Fallback Generator
 
     flow: str  # "early_planner" or "near_term"
 
@@ -177,7 +204,11 @@ class EligibilityRequest(BaseModel):
     is_bildungsinlaender: Optional[bool] = None
 
     def to_user_profile(self) -> UserProfile:
-        return UserProfile(**self.model_dump())
+        # Filter out the extra dynamic kwargs before unpacking into the strict dataclass
+        known_fields = self.model_dump(exclude_unset=True)
+        # Assuming base_checker.UserProfile expects specific fields. 
+        # Extra kwargs are safely ignored or filtered here depending on dataclass setup.
+        return UserProfile(**{k: v for k, v in known_fields.items() if hasattr(UserProfile, k) or k in UserProfile.__annotations__})
 
 
 class RequirementJudgmentOut(BaseModel):
