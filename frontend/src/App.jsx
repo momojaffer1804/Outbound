@@ -1,42 +1,20 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import './App.css'
 
 const API_URL = 'http://127.0.0.1:8000/eligibility'
 const UNIVERSITIES_URL = 'http://127.0.0.1:8000/universities'
 
-const STATUS_ICON = {
-  met: '✅',
-  not_met: '❌',
-  needs_review: '⚠️',
-  not_applicable: '➖',
-  informational: 'ℹ️',
-}
-
+const STATUS_ICON = { met: '✅', not_met: '❌', needs_review: '⚠️', not_applicable: '➖', informational: 'ℹ️️' }
 const MAX_COMPARE = 3
 const MAX_COUNTRIES = 2
-
-// KNOWN_REQUIREMENTS: Fields the frontend has custom UI for.
-// Anything NOT in this list will be auto-generated as a text input.
 const KNOWN_REQUIREMENTS = ['cgpa', 'english_test', 'gre', 'gate', 'german_test']
 
 function emptyProfile() {
   return {
-    flow: 'early_planner',
-    citizenship: '',
-    undergrad_country: '',
-    cgpa: '',
-    gre_quant_scaled: '',
-    gre_quant_percentile: '',
-    gre_verbal_percentile: '',
-    gre_awa: '',
-    gate_score_reported: false,
-    english_test_type: '',
-    english_score: '',
-    toefl_test_date_on_or_after_2026_01_21: false,
-    undergrad_institution_english_medium: null,
-    german_level: '',
-    is_eu_eea_citizen: false,
-    is_bildungsinlaender: false,
+    flow: 'early_planner', citizenship: '', undergrad_country: '', cgpa: '', gre_quant_scaled: '', gre_quant_percentile: '',
+    gre_verbal_percentile: '', gre_awa: '', gate_score_reported: false, english_test_type: '', english_score: '',
+    toefl_test_date_on_or_after_2026_01_21: false, undergrad_institution_english_medium: null, german_level: '',
+    is_eu_eea_citizen: false, is_bildungsinlaender: false,
   }
 }
 
@@ -45,25 +23,13 @@ function toRequestBody(profile, dynamicProfile) {
   const strOrNull = (v) => (v === '' ? null : v)
   
   const baseProfile = {
-    flow: profile.flow,
-    citizenship: strOrNull(profile.citizenship),
-    undergrad_country: strOrNull(profile.undergrad_country),
-    cgpa: numOrNull(profile.cgpa),
-    gre_quant_scaled: numOrNull(profile.gre_quant_scaled),
-    gre_quant_percentile: numOrNull(profile.gre_quant_percentile),
-    gre_verbal_percentile: numOrNull(profile.gre_verbal_percentile),
-    gre_awa: numOrNull(profile.gre_awa),
-    gate_score_reported: !!profile.gate_score_reported,
-    english_test_type: strOrNull(profile.english_test_type),
-    english_score: numOrNull(profile.english_score),
-    toefl_test_date_on_or_after_2026_01_21: !!profile.toefl_test_date_on_or_after_2026_01_21,
-    undergrad_institution_english_medium: profile.undergrad_institution_english_medium,
-    german_level: strOrNull(profile.german_level),
-    is_eu_eea_citizen: !!profile.is_eu_eea_citizen,
-    is_bildungsinlaender: !!profile.is_bildungsinlaender,
+    flow: profile.flow, citizenship: strOrNull(profile.citizenship), undergrad_country: strOrNull(profile.undergrad_country),
+    cgpa: numOrNull(profile.cgpa), gre_quant_scaled: numOrNull(profile.gre_quant_scaled), gre_quant_percentile: numOrNull(profile.gre_quant_percentile),
+    gre_verbal_percentile: numOrNull(profile.gre_verbal_percentile), gre_awa: numOrNull(profile.gre_awa), gate_score_reported: !!profile.gate_score_reported,
+    english_test_type: strOrNull(profile.english_test_type), english_score: numOrNull(profile.english_score),
+    toefl_test_date_on_or_after_2026_01_21: !!profile.toefl_test_date_on_or_after_2026_01_21, undergrad_institution_english_medium: profile.undergrad_institution_english_medium,
+    german_level: strOrNull(profile.german_level), is_eu_eea_citizen: !!profile.is_eu_eea_citizen, is_bildungsinlaender: !!profile.is_bildungsinlaender,
   }
-
-  // Merge the dynamic auto-generated fields directly into the root object
   return { ...baseProfile, ...dynamicProfile }
 }
 
@@ -72,9 +38,6 @@ function deriveCountry(universityName) {
   const lower = universityName.toLowerCase()
   if (lower.includes('tum') || lower.includes('munich') || lower.includes('rwth') || lower.includes('aachen')) return 'Germany'
   if (lower.includes('kaist') || lower.includes('seoul')) return 'South Korea'
-  if (lower.includes('uva') || lower.includes('delft') || lower.includes('eindhoven')) return 'Netherlands'
-  if (lower.includes('copenhagen')) return 'Denmark'
-  if (lower.includes('sorbonne') || lower.includes('paris')) return 'France'
   return 'Unknown'
 }
 
@@ -111,13 +74,7 @@ function TriStateSelect({ label, value, onChange }) {
   return (
     <label className="field">
       {label}
-      <select
-        value={value === null ? 'unknown' : value ? 'yes' : 'no'}
-        onChange={(e) => {
-          const v = e.target.value
-          onChange(v === 'unknown' ? null : v === 'yes')
-        }}
-      >
+      <select value={value === null ? 'unknown' : value ? 'yes' : 'no'} onChange={(e) => { const v = e.target.value; onChange(v === 'unknown' ? null : v === 'yes') }}>
         <option value="unknown">Not sure / N/A</option>
         <option value="yes">Yes</option>
         <option value="no">No</option>
@@ -127,24 +84,25 @@ function TriStateSelect({ label, value, onChange }) {
 }
 
 function ResultCard({ result }) {
-  const overallColor = { eligible: '#1a7f37', not_eligible: '#c0392b', needs_review: '#b7791f' }[result.overall_status] || '#555'
-  const displayYear = result.academic_year === 'unknown_year' ? 'Year Unspecified' : result.academic_year
-  
+  const overallColor = { eligible: '#16a34a', not_eligible: '#dc2626', needs_review: '#d97706' }[result.overall_status] || '#555'
   return (
     <div className="result-card">
       <div className="result-header">
         <div>
-          <h3>{result.university}</h3>
-          <p className="program">{result.program} — {displayYear}</p>
+          <h3 style={{ margin: 0 }}>{result.university}</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{result.program} — {result.academic_year === 'unknown_year' ? 'Year Unspecified' : result.academic_year}</p>
         </div>
         <span className="overall-badge" style={{ backgroundColor: overallColor }}>{result.overall_status.replace('_', ' ')}</span>
       </div>
-      {result.error && <p className="error-banner">Couldn't fetch live data for this university: {result.error}</p>}
+      {result.error && <p style={{ color: 'var(--danger)', marginBottom: '1rem' }}>Error: {result.error}</p>}
       <ul className="judgment-list">
         {result.judgments.map((j, i) => (
-          <li key={i} className={`judgment ${j.status}`}>
-            <span className="icon">{STATUS_ICON[j.status] || '•'}</span>
-            <div><strong>{j.requirement_type.replace(/_/g, ' ')}</strong><p>{j.detail}</p></div>
+          <li key={i} className="judgment">
+            <span>{STATUS_ICON[j.status] || '•'}</span>
+            <div>
+              <strong>{j.requirement_type.replace(/_/g, ' ')}</strong>
+              <p>{j.detail}</p>
+            </div>
           </li>
         ))}
       </ul>
@@ -154,11 +112,7 @@ function ResultCard({ result }) {
 
 function ComparisonTable({ results }) {
   const requirementTypes = []
-  results.forEach((r) => { 
-    r.judgments.forEach((j) => { 
-      if (!requirementTypes.includes(j.requirement_type)) requirementTypes.push(j.requirement_type) 
-    }) 
-  })
+  results.forEach((r) => { r.judgments.forEach((j) => { if (!requirementTypes.includes(j.requirement_type)) requirementTypes.push(j.requirement_type) }) })
   
   return (
     <div className="comparison-table-wrapper">
@@ -167,21 +121,23 @@ function ComparisonTable({ results }) {
           <tr>
             <th>Requirement</th>
             {results.map((r) => (
-              <th key={r.university + r.program}>{r.university}<br /><span className="comparison-program">{r.program}</span></th>
+              <th key={r.university + r.program}>{r.university}<br /><span style={{ color: 'var(--text-muted)', fontWeight: 'normal' }}>{r.program}</span></th>
             ))}
           </tr>
         </thead>
         <tbody>
           {requirementTypes.map((type) => (
             <tr key={type}>
-              <td className="requirement-label">{type.replace(/_/g, ' ')}</td>
+              <td style={{ fontWeight: 500, textTransform: 'capitalize' }}>{type.replace(/_/g, ' ')}</td>
               {results.map((r) => {
                 const judgment = r.judgments.find((j) => j.requirement_type === type)
-                if (!judgment) return <td key={r.university + r.program} className="comparison-cell empty">—</td>
+                if (!judgment) return <td key={r.university + r.program} style={{ textAlign: 'center' }}>—</td>
                 return (
-                  <td key={r.university + r.program} className={`comparison-cell ${judgment.status}`}>
-                    <span className="icon">{STATUS_ICON[judgment.status] || '•'}</span>
-                    <span className="comparison-detail">{judgment.detail}</span>
+                  <td key={r.university + r.program}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <span>{STATUS_ICON[judgment.status] || '•'}</span>
+                      <span>{judgment.detail}</span>
+                    </div>
                   </td>
                 )
               })}
@@ -193,35 +149,27 @@ function ComparisonTable({ results }) {
   )
 }
 
-// Formats snake_case requirement strings into clean Title Case labels
-function formatLabel(str) {
-  return str.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
-}
+function formatLabel(str) { return str.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') }
 
-// --- NEW CHAT VIEW COMPONENT ---
 function RagChatView() {
   const [query, setQuery] = useState('')
-  const [messages, setMessages] = useState([{ role: 'assistant', content: 'Hi! Ask me anything about university requirements, deadlines, or test scores. I will automatically cross-reference official pages and warn you if Yocket or other sites are wrong.' }])
+  const [messages, setMessages] = useState([{ role: 'assistant', content: 'Hi! Ask me anything about university requirements, deadlines, or test scores. I will cross-reference official pages and warn you if Yocket or other sites are wrong.' }])
   const [loading, setLoading] = useState(false)
+  const endRef = useRef(null)
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   const handleSend = async (e) => {
     e.preventDefault()
     if (!query.trim()) return
-
     const userQ = query
     setQuery('')
     setMessages(prev => [...prev, { role: 'user', content: userQ }])
     setLoading(true)
-
     try {
-      const res = await fetch('http://127.0.0.1:8000/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userQ })
-      })
+      const res = await fetch('http://127.0.0.1:8000/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: userQ }) })
       if (!res.ok) throw new Error(`API returned ${res.status}`)
       const data = await res.json()
-      
       setMessages(prev => [...prev, { role: 'assistant', content: data.answer, sources: data.sources }])
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}` }])
@@ -231,41 +179,29 @@ function RagChatView() {
   }
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', backgroundColor: '#161b22', borderRadius: '8px', border: '1px solid #30363d', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '600px' }}>
-      <div style={{ padding: '1rem', borderBottom: '1px solid #30363d', backgroundColor: '#0d1117' }}>
-        <h3 style={{ margin: 0, color: '#fff' }}>🧠 Outbound Assistant</h3>
+    <div className="chat-window">
+      <div className="chat-header">
+        <span style={{ fontSize: '1.25rem' }}>🧠</span> Outbound Intelligence
       </div>
-      
-      <div style={{ flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div className="chat-messages">
         {messages.map((msg, i) => (
-          <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
-            <div style={{ padding: '0.8rem 1.2rem', borderRadius: '8px', backgroundColor: msg.role === 'user' ? '#1a7f37' : '#21262d', color: '#fff', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
-              {msg.content}
-            </div>
+          <div key={i} className={`message-wrapper ${msg.role}`}>
+            <div className="chat-bubble">{msg.content}</div>
             {msg.sources && msg.sources.length > 0 && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
-                <strong style={{ color: '#8b949e' }}>Sources: </strong>
+              <div className="chat-sources">
                 {msg.sources.map((src, idx) => (
-                  <a key={idx} href={src} target="_blank" rel="noreferrer" style={{ color: '#58a6ff', marginRight: '0.5rem', wordBreak: 'break-all' }}>[{idx + 1}]</a>
+                  <a key={idx} href={src} target="_blank" rel="noreferrer">Source {idx + 1}</a>
                 ))}
               </div>
             )}
           </div>
         ))}
-        {loading && <div style={{ color: '#8b949e', fontStyle: 'italic' }}>Thinking... (Scraping, checking conflicts, and prompting LLM)</div>}
+        {loading && <div className="message-wrapper assistant"><div className="chat-bubble" style={{ opacity: 0.7 }}>Thinking...</div></div>}
+        <div ref={endRef} />
       </div>
-
-      <form onSubmit={handleSend} style={{ padding: '1rem', borderTop: '1px solid #30363d', display: 'flex', gap: '0.5rem', margin: 0 }}>
-        <input 
-          type="text" 
-          value={query} 
-          onChange={(e) => setQuery(e.target.value)} 
-          placeholder="Ask about TUM deadlines or Yocket accuracy..." 
-          style={{ flex: 1, padding: '0.8rem', borderRadius: '4px', border: '1px solid #30363d', backgroundColor: '#0d1117', color: '#fff' }} 
-        />
-        <button type="submit" disabled={loading} style={{ padding: '0 1.5rem', borderRadius: '4px', border: 'none', backgroundColor: '#1a7f37', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer' }}>
-          Send
-        </button>
+      <form onSubmit={handleSend} className="chat-input-form">
+        <input type="text" className="chat-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ask about TUM deadlines or Yocket accuracy..." />
+        <button type="submit" className="chat-send-btn" disabled={loading}>Send</button>
       </form>
     </div>
   )
@@ -274,45 +210,30 @@ function RagChatView() {
 export default function App() {
   const [appMode, setAppMode] = useState('check') // 'check' | 'compare' | 'chat'
   const [profile, setProfile] = useState(emptyProfile())
-  
-  // Dynamic state for auto-generated backend requirements
   const [dynamicProfile, setDynamicProfile] = useState({})
-  
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [countryFilter, setCountryFilter] = useState('All')
-
-  // Target Selections (4-Way Matrix)
-  const [countryMode, setCountryMode] = useState('all') // 'all' | 'specific'
+  
+  const [countryMode, setCountryMode] = useState('all') 
   const [selectedCountries, setSelectedCountries] = useState([])
-  const [programMode, setProgramMode] = useState('all') // 'all' | 'specific'
+  const [programMode, setProgramMode] = useState('all')
   const [selectedUniversities, setSelectedUniversities] = useState([])
 
   const [availableUniversities, setAvailableUniversities] = useState([])
-  const [universitiesLoading, setUniversitiesLoading] = useState(false)
 
   useEffect(() => {
     if (availableUniversities.length === 0) {
-      setUniversitiesLoading(true)
-      fetch(UNIVERSITIES_URL)
-        .then((resp) => resp.json())
-        .then((data) => setAvailableUniversities(data))
-        .catch(() => {})
-        .finally(() => setUniversitiesLoading(false))
+      fetch(UNIVERSITIES_URL).then((resp) => resp.json()).then((data) => setAvailableUniversities(data)).catch(() => {})
     }
   }, [availableUniversities.length])
 
-  // --- CORE PROGRESSIVE DISCLOSURE LOGIC ---
   const backendRequiredFields = useMemo(() => {
     const required = new Set()
-    
     if (programMode === 'specific' || appMode === 'compare') {
       selectedUniversities.forEach(uniName => {
         const uniData = availableUniversities.find(u => u.university === uniName)
-        if (uniData && Array.isArray(uniData.active_requirements)) {
-          uniData.active_requirements.forEach(req => required.add(req))
-        }
+        if (uniData && Array.isArray(uniData.active_requirements)) uniData.active_requirements.forEach(req => required.add(req))
       })
     }
     return required
@@ -322,16 +243,11 @@ export default function App() {
 
   function toggleCountry(countryName) {
     setSelectedCountries((prev) => {
-      const next = prev.includes(countryName) 
-        ? prev.filter((c) => c !== countryName) 
-        : prev.length < MAX_COUNTRIES ? [...prev, countryName] : prev
-      
-      setSelectedUniversities((currentUnis) =>
-        currentUnis.filter((uName) => {
-          const uObj = availableUniversities.find((item) => item.university === uName)
-          return next.includes(uObj?.country || deriveCountry(uName))
-        })
-      )
+      const next = prev.includes(countryName) ? prev.filter((c) => c !== countryName) : prev.length < MAX_COUNTRIES ? [...prev, countryName] : prev
+      setSelectedUniversities((currentUnis) => currentUnis.filter((uName) => {
+        const uObj = availableUniversities.find((item) => item.university === uName)
+        return next.includes(uObj?.country || deriveCountry(uName))
+      }))
       return next
     })
   }
@@ -345,155 +261,105 @@ export default function App() {
     })
   }
 
-  const set = (key) => (e) => {
-    const val = e && e.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e
-    setProfile((p) => ({ ...p, [key]: val }))
-  }
+  const set = (key) => (e) => setProfile((p) => ({ ...p, [key]: e && e.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }))
+  const setDynamic = (key) => (e) => setDynamicProfile((p) => ({ ...p, [key]: e.target.value }))
 
-  const setDynamic = (key) => (e) => {
-    const val = e.target.value
-    setDynamicProfile((p) => ({ ...p, [key]: val }))
-  }
-
-  const filteredUniversities = availableUniversities.filter((u) => {
-    if (countryMode === 'all') return true
-    return selectedCountries.includes(u.country || deriveCountry(u.university))
-  })
-
+  const filteredUniversities = availableUniversities.filter((u) => countryMode === 'all' || selectedCountries.includes(u.country || deriveCountry(u.university)))
   const isNearTerm = profile.flow === 'near_term'
-
-  const isGermanyInScope =
-    appMode === 'check' 
-      ? (countryMode === 'specific' && selectedCountries.includes('Germany')) ||
-        (programMode === 'specific' && selectedUniversities.some((u) => deriveCountry(u) === 'Germany'))
-      : selectedUniversities.some((u) => deriveCountry(u) === 'Germany')
+  const isGermanyInScope = appMode === 'check' 
+    ? (countryMode === 'specific' && selectedCountries.includes('Germany')) || (programMode === 'specific' && selectedUniversities.some((u) => deriveCountry(u) === 'Germany'))
+    : selectedUniversities.some((u) => deriveCountry(u) === 'Germany')
 
   async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true); setError(null); setResults(null)
-    
     try {
       const url = buildEligibilityUrl({ selectedUniversities, selectedCountries, countryMode, programMode, appMode, availableUniversities })
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toRequestBody(profile, dynamicProfile)),
-      })
+      const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toRequestBody(profile, dynamicProfile)) })
       if (!resp.ok) throw new Error(`API returned ${resp.status}`)
-      const data = await resp.json()
-      setResults(data)
-    } catch (err) {
-      setError(`Couldn't reach API: ${err.message}`)
-    } finally {
-      setLoading(false)
-    }
+      setResults(await resp.json())
+    } catch (err) { setError(`Couldn't reach API: ${err.message}`) } 
+    finally { setLoading(false) }
   }
 
   const availableCountries = [...new Set(availableUniversities.map((u) => u.country || deriveCountry(u.university)))].sort()
-  const visibleResults = results ? results.filter((r) => countryFilter === 'All' || r.country === countryFilter) : null
 
   return (
-    <div className="app">
-      <h1>Outbound — Masters Eligibility Check</h1>
+    <div className="app-container">
+      <h1>Outbound</h1>
 
-      {/* --- TABS --- */}
-      <div className="app-mode-tabs" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '1px solid #333', paddingBottom: '1rem' }}>
-        <button type="button" onClick={() => { setAppMode('check'); setResults(null); setError(null) }} style={{ padding: '0.6rem 1.2rem', background: appMode === 'check' ? '#1a7f37' : '#2d2d2d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: appMode === 'check' ? 'bold' : 'normal' }}>
-          Eligibility Check
-        </button>
-        <button type="button" onClick={() => { setAppMode('compare'); setResults(null); setError(null); setSelectedUniversities((prev) => prev.slice(0, MAX_COMPARE)) }} style={{ padding: '0.6rem 1.2rem', background: appMode === 'compare' ? '#1a7f37' : '#2d2d2d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: appMode === 'compare' ? 'bold' : 'normal' }}>
-          Compare Programs
-        </button>
-        <button type="button" onClick={() => { setAppMode('chat'); setResults(null); setError(null) }} style={{ padding: '0.6rem 1.2rem', background: appMode === 'chat' ? '#1a7f37' : '#2d2d2d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: appMode === 'chat' ? 'bold' : 'normal' }}>
-          💬 Smart Assistant
-        </button>
+      <div className="app-mode-tabs">
+        <button type="button" className={`tab-btn ${appMode === 'check' ? 'active' : ''}`} onClick={() => { setAppMode('check'); setResults(null); setError(null) }}>Eligibility Engine</button>
+        <button type="button" className={`tab-btn ${appMode === 'compare' ? 'active' : ''}`} onClick={() => { setAppMode('compare'); setResults(null); setError(null); setSelectedUniversities(prev => prev.slice(0, MAX_COMPARE)) }}>Compare Programs</button>
+        <button type="button" className={`tab-btn chat-tab ${appMode === 'chat' ? 'active' : ''}`} onClick={() => { setAppMode('chat'); setResults(null); setError(null) }}>✨ Smart Assistant</button>
       </div>
 
-      {/* Conditional Rendering: Only show forms and results if NOT in chat mode */}
       {appMode !== 'chat' && (
         <>
-          <form onSubmit={handleSubmit} className="profile-form">
-            <div className="flow-toggle">
-              <label><input type="radio" name="flow" value="early_planner" checked={profile.flow === 'early_planner'} onChange={set('flow')} />Early planner (CGPA only)</label>
-              <label><input type="radio" name="flow" value="near_term" checked={profile.flow === 'near_term'} onChange={set('flow')} />Near-term applicant (I have my scores)</label>
+          <form onSubmit={handleSubmit}>
+            <div className="section-panel">
+              <div className="section-title">Application Timeline</div>
+              <div className="radio-group row">
+                <label className="checkable"><input type="radio" checked={profile.flow === 'early_planner'} onChange={() => setProfile(p => ({...p, flow: 'early_planner'}))} /> Early planner (CGPA only)</label>
+                <label className="checkable"><input type="radio" checked={profile.flow === 'near_term'} onChange={() => setProfile(p => ({...p, flow: 'near_term'}))} /> Near-term (I have my scores)</label>
+              </div>
             </div>
 
-            {/* --- LAYER 1: BASE UNIVERSAL FIELDS --- */}
-            <div className="field-grid">
-              <label className="field">Citizenship<input type="text" placeholder="e.g. India" value={profile.citizenship} onChange={set('citizenship')} /></label>
-              <label className="field">Undergrad country<input type="text" placeholder="e.g. India" value={profile.undergrad_country} onChange={set('undergrad_country')} /></label>
-              <label className="field">CGPA (10-point scale)<input type="number" step="0.01" value={profile.cgpa} onChange={set('cgpa')} /></label>
+            <div className="section-panel">
+              <div className="section-title">Basic Profile</div>
+              <div className="field-grid">
+                <label className="field">Citizenship<input type="text" placeholder="e.g. India" value={profile.citizenship} onChange={set('citizenship')} /></label>
+                <label className="field">Undergrad Country<input type="text" placeholder="e.g. India" value={profile.undergrad_country} onChange={set('undergrad_country')} /></label>
+                <label className="field">CGPA (10-point scale)<input type="number" step="0.01" value={profile.cgpa} onChange={set('cgpa')} /></label>
+              </div>
             </div>
 
-            {/* English Proficiency (Always visible for near-term) */}
             {isNearTerm && (
-              <div className="near-term-section" style={{ marginTop: '1rem', padding: '1.2rem', backgroundColor: '#1e1e1e', borderRadius: '8px' }}>
-                <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.05rem', color: '#4a9eff' }}>English Proficiency</h3>
+              <div className="section-panel">
+                <div className="section-title">English Proficiency</div>
                 <div className="field-grid">
                   <TriStateSelect label="Was undergrad English-medium?" value={profile.undergrad_institution_english_medium} onChange={(v) => setProfile((p) => ({ ...p, undergrad_institution_english_medium: v }))} />
-                  <label className="field">Test type<select value={profile.english_test_type} onChange={set('english_test_type')}><option value="">Not taken / N/A</option><option value="IELTS">IELTS</option><option value="TOEFL">TOEFL</option><option value="TOEIC">TOEIC</option><option value="TEPS">TEPS</option></select></label>
+                  <label className="field">Test Type<select value={profile.english_test_type} onChange={set('english_test_type')}><option value="">Not taken / N/A</option><option value="IELTS">IELTS</option><option value="TOEFL">TOEFL</option><option value="TOEIC">TOEIC</option><option value="TEPS">TEPS</option></select></label>
                   <label className="field">Score<input type="number" step="0.1" value={profile.english_score} onChange={set('english_score')} /></label>
                   {profile.english_test_type === 'TOEFL' && (
-                    <label className="field checkbox"><input type="checkbox" checked={profile.toefl_test_date_on_or_after_2026_01_21} onChange={set('toefl_test_date_on_or_after_2026_01_21')} />My TOEFL test date was on/after 21 Jan 2026 (new scale)</label>
+                    <label className="checkable" style={{ gridColumn: '1 / -1' }}><input type="checkbox" checked={profile.toefl_test_date_on_or_after_2026_01_21} onChange={set('toefl_test_date_on_or_after_2026_01_21')} /> My TOEFL date was on/after 21 Jan 2026 (new scale)</label>
                   )}
                 </div>
               </div>
             )}
 
-            {/* --- LAYER 2: TARGET SELECTOR (4-WAY MATRIX) --- */}
             {appMode === 'check' && (
-              <div className="target-section" style={{ marginTop: '1.5rem', padding: '1.2rem', backgroundColor: '#252525', borderRadius: '8px' }}>
-                
-                {/* Step 1: Country Picker */}
-                <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold' }}>Step 1: Target Countries</p>
-                <div style={{ display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input type="radio" checked={countryMode === 'all'} onChange={() => { setCountryMode('all'); setSelectedCountries([]) }} />Open to any country
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input type="radio" checked={countryMode === 'specific'} onChange={() => setCountryMode('specific')} />Specific countries (up to {MAX_COUNTRIES})
-                  </label>
+              <div className="section-panel">
+                <div className="section-title">Target Countries & Programs</div>
+                <div className="radio-group row" style={{ marginBottom: '1.5rem' }}>
+                  <label className="checkable"><input type="radio" checked={countryMode === 'all'} onChange={() => { setCountryMode('all'); setSelectedCountries([]) }} /> Anywhere</label>
+                  <label className="checkable"><input type="radio" checked={countryMode === 'specific'} onChange={() => setCountryMode('specific')} /> Specific countries</label>
                 </div>
 
                 {countryMode === 'specific' && (
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    {universitiesLoading && <p className="compare-status">Loading country list…</p>}
+                  <div className="checkbox-list" style={{ marginBottom: '2rem', display: 'flex', flexDirection: 'row', gap: '1rem' }}>
                     {availableCountries.map((c) => {
                       const isSelected = selectedCountries.includes(c)
                       const disabled = !isSelected && selectedCountries.length >= MAX_COUNTRIES
                       return (
-                        <label key={c} style={{ display: 'inline-block', marginRight: '1.5rem', marginBottom: '0.5rem', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1 }}>
-                          <input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleCountry(c)} style={{ marginRight: '6px' }} />{c}
-                        </label>
+                        <label key={c} className="checkable" style={{ opacity: disabled ? 0.4 : 1 }}><input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleCountry(c)} /> {c}</label>
                       )
                     })}
                   </div>
                 )}
 
-                {/* Step 2: Program Picker */}
                 {(countryMode === 'all' || selectedCountries.length > 0) && (
                   <>
-                    <hr style={{ borderColor: '#333', margin: '1rem 0' }} />
-                    <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold' }}>Step 2: Target Programs</p>
-                    <div style={{ display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                        <input type="radio" checked={programMode === 'all'} onChange={() => { setProgramMode('all'); setSelectedUniversities([]) }} />All programs {countryMode === 'specific' ? 'in selected countries' : ''}
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                        <input type="radio" checked={programMode === 'specific'} onChange={() => setProgramMode('specific')} />Pick specific programs
-                      </label>
+                    <div className="radio-group row" style={{ marginBottom: '1.5rem' }}>
+                      <label className="checkable"><input type="radio" checked={programMode === 'all'} onChange={() => { setProgramMode('all'); setSelectedUniversities([]) }} /> All programs</label>
+                      <label className="checkable"><input type="radio" checked={programMode === 'specific'} onChange={() => setProgramMode('specific')} /> Specific programs</label>
                     </div>
 
                     {programMode === 'specific' && (
-                      <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '0.5rem', background: '#1c1c1c', borderRadius: '4px' }}>
-                        {filteredUniversities.map((u) => {
-                          const isSelected = selectedUniversities.includes(u.university)
-                          return (
-                            <label key={`${u.university}-${u.program}`} style={{ display: 'block', marginBottom: '0.5rem', cursor: 'pointer' }}>
-                              <input type="checkbox" checked={isSelected} onChange={() => toggleUniversity(u.university)} style={{ marginRight: '8px' }} />{u.university} — {u.program}
-                            </label>
-                          )
-                        })}
+                      <div className="checkbox-list">
+                        {filteredUniversities.map((u) => (
+                          <label key={`${u.university}-${u.program}`} className="checkable"><input type="checkbox" checked={selectedUniversities.includes(u.university)} onChange={() => toggleUniversity(u.university)} /> {u.university} — {u.program}</label>
+                        ))}
                       </div>
                     )}
                   </>
@@ -501,117 +367,73 @@ export default function App() {
               </div>
             )}
 
-            {/* Compare Mode Target Selector */}
             {appMode === 'compare' && (
-              <div className="target-section" style={{ marginTop: '1.5rem', padding: '1.2rem', backgroundColor: '#252525', borderRadius: '8px' }}>
-                <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold' }}>Select Programs to Compare (up to {MAX_COMPARE})</p>
-                {availableUniversities.map((u) => {
-                  const isSelected = selectedUniversities.includes(u.university)
-                  const disabled = !isSelected && selectedUniversities.length >= MAX_COMPARE
-                  return (
-                    <label key={`${u.university}-${u.program}`} style={{ display: 'block', marginBottom: '0.5rem', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1 }}>
-                      <input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleUniversity(u.university)} style={{ marginRight: '8px' }} />{u.university} — {u.program}
-                    </label>
-                  )
-                })}
+              <div className="section-panel">
+                <div className="section-title">Select Programs to Compare (up to {MAX_COMPARE})</div>
+                <div className="checkbox-list">
+                  {availableUniversities.map((u) => {
+                    const isSelected = selectedUniversities.includes(u.university)
+                    const disabled = !isSelected && selectedUniversities.length >= MAX_COMPARE
+                    return (
+                      <label key={`${u.university}-${u.program}`} className="checkable" style={{ opacity: disabled ? 0.4 : 1 }}><input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleUniversity(u.university)} /> {u.university} — {u.program}</label>
+                    )
+                  })}
+                </div>
               </div>
             )}
 
-            {/* --- LAYER 3: DYNAMIC CONTEXTUAL REQUIREMENTS --- */}
-            {isNearTerm && (
-              <div className="contextual-requirements-section" style={{ marginTop: '1.5rem' }}>
-                
-                {/* Country Level: German fields */}
+            {isNearTerm && (isGermanyInScope || (backendRequiredFields.size > 0 && (programMode === 'specific' || appMode === 'compare'))) && (
+              <div className="section-panel">
+                <div className="section-title">Contextual Requirements</div>
                 {isGermanyInScope && (
-                  <div style={{ padding: '1.5rem', backgroundColor: '#21262d', borderRadius: '8px', border: '1px solid #30363d', marginBottom: '1rem' }}>
-                    <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.05rem', color: '#ffb347' }}>Germany Requirements</h3>
-                    <div className="field-grid">
-                      <label className="field">
-                        German level
-                        <select value={profile.german_level} onChange={set('german_level')}>
-                          <option value="">None / not sure</option>
-                          <option value="A1">A1</option><option value="A2">A2</option><option value="B1">B1</option>
-                          <option value="B2">B2</option><option value="C1">C1</option><option value="C2">C2</option>
-                        </select>
-                      </label>
-                      <label className="field checkbox"><input type="checkbox" checked={profile.is_eu_eea_citizen} onChange={set('is_eu_eea_citizen')} />I'm an EU/EEA citizen</label>
-                      <label className="field checkbox"><input type="checkbox" checked={profile.is_bildungsinlaender} onChange={set('is_bildungsinlaender')} />Completed secondary education in Germany (Bildungsinländer)</label>
-                    </div>
+                  <div className="field-grid" style={{ marginBottom: '1.5rem' }}>
+                    <label className="field">German level<select value={profile.german_level} onChange={set('german_level')}><option value="">None</option><option value="A1">A1</option><option value="A2">A2</option><option value="B1">B1</option><option value="B2">B2</option><option value="C1">C1</option><option value="C2">C2</option></select></label>
+                    <label className="checkable" style={{ marginTop: 'auto', paddingBottom: '0.5rem' }}><input type="checkbox" checked={profile.is_eu_eea_citizen} onChange={set('is_eu_eea_citizen')} /> EU/EEA Citizen</label>
+                    <label className="checkable" style={{ marginTop: 'auto', paddingBottom: '0.5rem' }}><input type="checkbox" checked={profile.is_bildungsinlaender} onChange={set('is_bildungsinlaender')} /> Bildungsinländer</label>
                   </div>
                 )}
-
-                {/* Program Level: Dynamically pulled from backend only when specific programs are targeted */}
-                {backendRequiredFields.size > 0 && (programMode === 'specific' || appMode === 'compare') && (
-                  <div style={{ padding: '1.5rem', backgroundColor: '#161b22', borderRadius: '8px', border: '1px solid #30363d' }}>
-                    <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#ff6b6b' }}>Specific Program Requirements</h3>
-                    
-                    {/* Custom Block: Standardized Tests */}
-                    {(backendRequiredFields.has('gre') || backendRequiredFields.has('gate')) && (
-                      <div className="field-grid">
-                        {backendRequiredFields.has('gre') && (
-                          <>
-                            <label className="field">GRE Quant Scaled (130-170)<input type="number" value={profile.gre_quant_scaled} onChange={set('gre_quant_scaled')} /></label>
-                            <label className="field">GRE Quant Percentile (0-100)<input type="number" value={profile.gre_quant_percentile} onChange={set('gre_quant_percentile')} /></label>
-                            <label className="field">GRE Verbal Percentile<input type="number" value={profile.gre_verbal_percentile} onChange={set('gre_verbal_percentile')} /></label>
-                            <label className="field">GRE AWA<input type="number" step="0.5" value={profile.gre_awa} onChange={set('gre_awa')} /></label>
-                          </>
-                        )}
-                        {backendRequiredFields.has('gate') && (
-                          <label className="field checkbox"><input type="checkbox" checked={profile.gate_score_reported} onChange={set('gate_score_reported')} />I have a GATE score (India only)</label>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Auto-Generator Block: For unknown requirements scraped by the backend */}
-                    {unknownRequirements.length > 0 && (
+                
+                {(backendRequiredFields.has('gre') || backendRequiredFields.has('gate')) && (
+                  <div className="field-grid">
+                    {backendRequiredFields.has('gre') && (
                       <>
-                        {(backendRequiredFields.has('gre') || backendRequiredFields.has('gate')) && <hr style={{ borderColor: '#333', margin: '1.5rem 0' }} />}
-                        <div className="field-grid">
-                          {unknownRequirements.map(req => (
-                            <label key={req} className="field">
-                              {formatLabel(req)}
-                              <input type="text" placeholder={`Enter ${formatLabel(req)}...`} value={dynamicProfile[req] || ''} onChange={setDynamic(req)} />
-                            </label>
-                          ))}
-                        </div>
+                        <label className="field">GRE Quant Scaled<input type="number" value={profile.gre_quant_scaled} onChange={set('gre_quant_scaled')} /></label>
+                        <label className="field">GRE Quant %<input type="number" value={profile.gre_quant_percentile} onChange={set('gre_quant_percentile')} /></label>
+                        <label className="field">GRE Verbal %<input type="number" value={profile.gre_verbal_percentile} onChange={set('gre_verbal_percentile')} /></label>
+                        <label className="field">GRE AWA<input type="number" step="0.5" value={profile.gre_awa} onChange={set('gre_awa')} /></label>
                       </>
                     )}
+                    {backendRequiredFields.has('gate') && <label className="checkable" style={{ gridColumn: '1 / -1', marginTop: '1rem' }}><input type="checkbox" checked={profile.gate_score_reported} onChange={set('gate_score_reported')} /> I have a GATE score</label>}
+                  </div>
+                )}
+
+                {unknownRequirements.length > 0 && (
+                  <div className="field-grid" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border)' }}>
+                    {unknownRequirements.map(req => (
+                      <label key={req} className="field">{formatLabel(req)}<input type="text" value={dynamicProfile[req] || ''} onChange={setDynamic(req)} /></label>
+                    ))}
                   </div>
                 )}
               </div>
             )}
 
-            <button type="submit" disabled={loading} style={{ marginTop: '1.5rem' }}>
-              {loading ? 'Processing...' : appMode === 'compare' ? 'Compare selected' : 'Check eligibility'}
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Processing...' : appMode === 'compare' ? 'Compare Selected' : 'Run Eligibility Engine'}
             </button>
           </form>
 
-          {error && <p className="error-banner">{error}</p>}
+          {error && <div style={{ color: 'var(--danger)', marginTop: '2rem', padding: '1rem', border: '1px solid var(--danger)', borderRadius: '6px' }}>{error}</div>}
           
-          {results && appMode === 'compare' && (
-            <ComparisonTable results={results} />
-          )}
-          
+          {results && appMode === 'compare' && <ComparisonTable results={results} />}
           {results && appMode === 'check' && (
-            <>
-              <div className="country-filter" style={{ marginTop: '2rem' }}>
-                <label>Filter by country:{' '}
-                  <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
-                    {['All', ...new Set(results.map(r => r.country))].map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </label>
-              </div>
-              <div className="results">
-                {visibleResults.map((r, i) => <ResultCard key={i} result={r} />)}
-              </div>
-            </>
+            <div className="results-grid">
+              {results.map((r, i) => <ResultCard key={i} result={r} />)}
+            </div>
           )}
         </>
       )}
 
-      {/* --- RAG CHAT VIEW --- */}
       {appMode === 'chat' && <RagChatView />}
-
     </div>
   )
 }
