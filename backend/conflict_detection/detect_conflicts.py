@@ -30,36 +30,47 @@ class ConflictRecord:
     authoritative: object
     secondary: list = field(default_factory=list)
     message: str = ""
+    program: str = ""
 
 
 def detect_conflicts(requirements: list) -> list[ConflictRecord]:
+    # Group by (university, program, requirement_type) so 
+    # different degree programs at the same university don't clash.
     groups: dict[tuple, list] = {}
     for req in requirements:
-        key = (req.university, req.requirement_type)
+        prog = getattr(req, "program", "")
+        key = (req.university, prog, req.requirement_type)
         groups.setdefault(key, []).append(req)
 
     conflicts: list[ConflictRecord] = []
-    for (university, requirement_type), reqs in groups.items():
+    for (university, program, requirement_type), reqs in groups.items():
         distinct_values = {r.value for r in reqs}
         if len(distinct_values) <= 1:
             continue
 
         reqs_sorted = sorted(reqs, key=lambda r: r.source_tier)
-        authoritative = reqs_sorted[0]
-        # A differing value only counts as a genuine CONFLICT if it comes
-        # from a DIFFERENT source than the authoritative record. Two rows
-        # sharing the same requirement_type from the SAME source_url (e.g.
-        # a university's own page legitimately listing both a winter
-        # deadline and a summer deadline under requirement_type="deadline")
-        # are multiple real facts, not disagreement -- grouping by
-        # requirement_type alone is too coarse to distinguish "two sources
-        # disagree" from "one source states two true things". Bug found
-        # 2026-09-29 via live run: TUM's winter/summer deadlines (both
-        # tier-1, same source_url) were being flagged as a false-positive
-        # conflict before this check existed.
+        
+        # An official tier must be Tier 1 (or Tier 2 maximum).
+        # If the highest source available is Tier 4/5, we have NO official baseline.
+        highest_tier = reqs_sorted[0].source_tier
+        if highest_tier > 2:
+            continue
+
+        # Gather all official baseline records
+        auth_records = [r for r in reqs_sorted if r.source_tier == highest_tier]
+        authoritative = auth_records[0]
+        
+        # Set of all accepted official values and URLs
+        auth_values = {r.value for r in auth_records}
+        auth_urls = {r.source_url for r in auth_records}
+
+        # Secondary sources MUST have a lower tier (higher tier number),
+        # must differ from ALL official values, and cannot be from an official URL.
         secondary = [
-            r for r in reqs_sorted[1:]
-            if r.value != authoritative.value and r.source_url != authoritative.source_url
+            r for r in reqs_sorted
+            if r.source_tier > highest_tier
+            and r.value not in auth_values
+            and r.source_url not in auth_urls
         ]
 
         if not secondary:
@@ -67,6 +78,7 @@ def detect_conflicts(requirements: list) -> list[ConflictRecord]:
 
         conflicts.append(ConflictRecord(
             university=university,
+            program=program,
             requirement_type=requirement_type,
             authoritative=authoritative,
             secondary=secondary,
@@ -87,7 +99,8 @@ def format_conflict_report(conflicts: list[ConflictRecord]) -> str:
 
     lines = []
     for c in conflicts:
-        lines.append(f"\n=== {c.university} — {c.requirement_type} ===")
+        prog_label = f" ({c.program})" if c.program else ""
+        lines.append(f"\n=== {c.university}{prog_label} — {c.requirement_type} ===")
         lines.append(f"  AUTHORITATIVE (tier {c.authoritative.source_tier}, {c.authoritative.source_url}):")
         lines.append(f"    {c.authoritative.value}")
         for s in c.secondary:
@@ -98,14 +111,9 @@ def format_conflict_report(conflicts: list[ConflictRecord]) -> str:
 
 
 if __name__ == "__main__":
-    # Scrapers live in a sibling directory (backend/ingestion/), not here
-    # (backend/conflict_detection/). Python doesn't search sibling folders
-    # by default, so add it to sys.path explicitly. This matches the
-    # project's existing flat-script-import convention (no __init__.py
-    # package structure) rather than introducing a different import system
-    # just for this file.
-    import sys
     import os
+    import sys
+    # Adding the parent directory's 'ingestion' folder to the path dynamically
     sys.path.insert(
         0,
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ingestion")
@@ -120,5 +128,6 @@ if __name__ == "__main__":
         + TUMEnglishMyGermanUniversityScraper().run()
         + TUMEnglishYocketScraper().run()
     )
+    
     conflicts = detect_conflicts(all_reqs)
     print(format_conflict_report(conflicts))

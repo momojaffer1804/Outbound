@@ -198,8 +198,81 @@ function formatLabel(str) {
   return str.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
+// --- NEW CHAT VIEW COMPONENT ---
+function RagChatView() {
+  const [query, setQuery] = useState('')
+  const [messages, setMessages] = useState([{ role: 'assistant', content: 'Hi! Ask me anything about university requirements, deadlines, or test scores. I will automatically cross-reference official pages and warn you if Yocket or other sites are wrong.' }])
+  const [loading, setLoading] = useState(false)
+
+  const handleSend = async (e) => {
+    e.preventDefault()
+    if (!query.trim()) return
+
+    const userQ = query
+    setQuery('')
+    setMessages(prev => [...prev, { role: 'user', content: userQ }])
+    setLoading(true)
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: userQ })
+      })
+      if (!res.ok) throw new Error(`API returned ${res.status}`)
+      const data = await res.json()
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: data.answer, sources: data.sources }])
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}` }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: '800px', margin: '0 auto', backgroundColor: '#161b22', borderRadius: '8px', border: '1px solid #30363d', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '600px' }}>
+      <div style={{ padding: '1rem', borderBottom: '1px solid #30363d', backgroundColor: '#0d1117' }}>
+        <h3 style={{ margin: 0, color: '#fff' }}>🧠 Outbound Assistant</h3>
+      </div>
+      
+      <div style={{ flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {messages.map((msg, i) => (
+          <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
+            <div style={{ padding: '0.8rem 1.2rem', borderRadius: '8px', backgroundColor: msg.role === 'user' ? '#1a7f37' : '#21262d', color: '#fff', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+              {msg.content}
+            </div>
+            {msg.sources && msg.sources.length > 0 && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
+                <strong style={{ color: '#8b949e' }}>Sources: </strong>
+                {msg.sources.map((src, idx) => (
+                  <a key={idx} href={src} target="_blank" rel="noreferrer" style={{ color: '#58a6ff', marginRight: '0.5rem', wordBreak: 'break-all' }}>[{idx + 1}]</a>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {loading && <div style={{ color: '#8b949e', fontStyle: 'italic' }}>Thinking... (Scraping, checking conflicts, and prompting LLM)</div>}
+      </div>
+
+      <form onSubmit={handleSend} style={{ padding: '1rem', borderTop: '1px solid #30363d', display: 'flex', gap: '0.5rem', margin: 0 }}>
+        <input 
+          type="text" 
+          value={query} 
+          onChange={(e) => setQuery(e.target.value)} 
+          placeholder="Ask about TUM deadlines or Yocket accuracy..." 
+          style={{ flex: 1, padding: '0.8rem', borderRadius: '4px', border: '1px solid #30363d', backgroundColor: '#0d1117', color: '#fff' }} 
+        />
+        <button type="submit" disabled={loading} style={{ padding: '0 1.5rem', borderRadius: '4px', border: 'none', backgroundColor: '#1a7f37', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer' }}>
+          Send
+        </button>
+      </form>
+    </div>
+  )
+}
+
 export default function App() {
-  const [appMode, setAppMode] = useState('check')
+  const [appMode, setAppMode] = useState('check') // 'check' | 'compare' | 'chat'
   const [profile, setProfile] = useState(emptyProfile())
   
   // Dynamic state for auto-generated backend requirements
@@ -231,11 +304,9 @@ export default function App() {
   }, [availableUniversities.length])
 
   // --- CORE PROGRESSIVE DISCLOSURE LOGIC ---
-  // Only queries backend requirements IF the user is explicitly targeting specific programs
   const backendRequiredFields = useMemo(() => {
     const required = new Set()
     
-    // Only fetch specific fields if they are in "Sniper Mode"
     if (programMode === 'specific' || appMode === 'compare') {
       selectedUniversities.forEach(uniName => {
         const uniData = availableUniversities.find(u => u.university === uniName)
@@ -255,7 +326,6 @@ export default function App() {
         ? prev.filter((c) => c !== countryName) 
         : prev.length < MAX_COUNTRIES ? [...prev, countryName] : prev
       
-      // Auto-remove universities that don't match the new country scope
       setSelectedUniversities((currentUnis) =>
         currentUnis.filter((uName) => {
           const uObj = availableUniversities.find((item) => item.university === uName)
@@ -292,7 +362,6 @@ export default function App() {
 
   const isNearTerm = profile.flow === 'near_term'
 
-  // Determine if Germany-specific contextual fields should show
   const isGermanyInScope =
     appMode === 'check' 
       ? (countryMode === 'specific' && selectedCountries.includes('Germany')) ||
@@ -335,202 +404,214 @@ export default function App() {
         <button type="button" onClick={() => { setAppMode('compare'); setResults(null); setError(null); setSelectedUniversities((prev) => prev.slice(0, MAX_COMPARE)) }} style={{ padding: '0.6rem 1.2rem', background: appMode === 'compare' ? '#1a7f37' : '#2d2d2d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: appMode === 'compare' ? 'bold' : 'normal' }}>
           Compare Programs
         </button>
+        <button type="button" onClick={() => { setAppMode('chat'); setResults(null); setError(null) }} style={{ padding: '0.6rem 1.2rem', background: appMode === 'chat' ? '#1a7f37' : '#2d2d2d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: appMode === 'chat' ? 'bold' : 'normal' }}>
+          💬 Smart Assistant
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="profile-form">
-        <div className="flow-toggle">
-          <label><input type="radio" name="flow" value="early_planner" checked={profile.flow === 'early_planner'} onChange={set('flow')} />Early planner (CGPA only)</label>
-          <label><input type="radio" name="flow" value="near_term" checked={profile.flow === 'near_term'} onChange={set('flow')} />Near-term applicant (I have my scores)</label>
-        </div>
+      {/* Conditional Rendering: Only show forms and results if NOT in chat mode */}
+      {appMode !== 'chat' && (
+        <>
+          <form onSubmit={handleSubmit} className="profile-form">
+            <div className="flow-toggle">
+              <label><input type="radio" name="flow" value="early_planner" checked={profile.flow === 'early_planner'} onChange={set('flow')} />Early planner (CGPA only)</label>
+              <label><input type="radio" name="flow" value="near_term" checked={profile.flow === 'near_term'} onChange={set('flow')} />Near-term applicant (I have my scores)</label>
+            </div>
 
-        {/* --- LAYER 1: BASE UNIVERSAL FIELDS --- */}
-        <div className="field-grid">
-          <label className="field">Citizenship<input type="text" placeholder="e.g. India" value={profile.citizenship} onChange={set('citizenship')} /></label>
-          <label className="field">Undergrad country<input type="text" placeholder="e.g. India" value={profile.undergrad_country} onChange={set('undergrad_country')} /></label>
-          <label className="field">CGPA (10-point scale)<input type="number" step="0.01" value={profile.cgpa} onChange={set('cgpa')} /></label>
-        </div>
-
-        {/* English Proficiency (Always visible for near-term) */}
-        {isNearTerm && (
-          <div className="near-term-section" style={{ marginTop: '1rem', padding: '1.2rem', backgroundColor: '#1e1e1e', borderRadius: '8px' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.05rem', color: '#4a9eff' }}>English Proficiency</h3>
+            {/* --- LAYER 1: BASE UNIVERSAL FIELDS --- */}
             <div className="field-grid">
-              <TriStateSelect label="Was undergrad English-medium?" value={profile.undergrad_institution_english_medium} onChange={(v) => setProfile((p) => ({ ...p, undergrad_institution_english_medium: v }))} />
-              <label className="field">Test type<select value={profile.english_test_type} onChange={set('english_test_type')}><option value="">Not taken / N/A</option><option value="IELTS">IELTS</option><option value="TOEFL">TOEFL</option><option value="TOEIC">TOEIC</option><option value="TEPS">TEPS</option></select></label>
-              <label className="field">Score<input type="number" step="0.1" value={profile.english_score} onChange={set('english_score')} /></label>
-              {profile.english_test_type === 'TOEFL' && (
-                <label className="field checkbox"><input type="checkbox" checked={profile.toefl_test_date_on_or_after_2026_01_21} onChange={set('toefl_test_date_on_or_after_2026_01_21')} />My TOEFL test date was on/after 21 Jan 2026 (new scale)</label>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* --- LAYER 2: TARGET SELECTOR (4-WAY MATRIX) --- */}
-        {appMode === 'check' && (
-          <div className="target-section" style={{ marginTop: '1.5rem', padding: '1.2rem', backgroundColor: '#252525', borderRadius: '8px' }}>
-            
-            {/* Step 1: Country Picker */}
-            <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold' }}>Step 1: Target Countries</p>
-            <div style={{ display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input type="radio" checked={countryMode === 'all'} onChange={() => { setCountryMode('all'); setSelectedCountries([]) }} />Open to any country
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input type="radio" checked={countryMode === 'specific'} onChange={() => setCountryMode('specific')} />Specific countries (up to {MAX_COUNTRIES})
-              </label>
+              <label className="field">Citizenship<input type="text" placeholder="e.g. India" value={profile.citizenship} onChange={set('citizenship')} /></label>
+              <label className="field">Undergrad country<input type="text" placeholder="e.g. India" value={profile.undergrad_country} onChange={set('undergrad_country')} /></label>
+              <label className="field">CGPA (10-point scale)<input type="number" step="0.01" value={profile.cgpa} onChange={set('cgpa')} /></label>
             </div>
 
-            {countryMode === 'specific' && (
-              <div style={{ marginBottom: '1.5rem' }}>
-                {universitiesLoading && <p className="compare-status">Loading country list…</p>}
-                {availableCountries.map((c) => {
-                  const isSelected = selectedCountries.includes(c)
-                  const disabled = !isSelected && selectedCountries.length >= MAX_COUNTRIES
+            {/* English Proficiency (Always visible for near-term) */}
+            {isNearTerm && (
+              <div className="near-term-section" style={{ marginTop: '1rem', padding: '1.2rem', backgroundColor: '#1e1e1e', borderRadius: '8px' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.05rem', color: '#4a9eff' }}>English Proficiency</h3>
+                <div className="field-grid">
+                  <TriStateSelect label="Was undergrad English-medium?" value={profile.undergrad_institution_english_medium} onChange={(v) => setProfile((p) => ({ ...p, undergrad_institution_english_medium: v }))} />
+                  <label className="field">Test type<select value={profile.english_test_type} onChange={set('english_test_type')}><option value="">Not taken / N/A</option><option value="IELTS">IELTS</option><option value="TOEFL">TOEFL</option><option value="TOEIC">TOEIC</option><option value="TEPS">TEPS</option></select></label>
+                  <label className="field">Score<input type="number" step="0.1" value={profile.english_score} onChange={set('english_score')} /></label>
+                  {profile.english_test_type === 'TOEFL' && (
+                    <label className="field checkbox"><input type="checkbox" checked={profile.toefl_test_date_on_or_after_2026_01_21} onChange={set('toefl_test_date_on_or_after_2026_01_21')} />My TOEFL test date was on/after 21 Jan 2026 (new scale)</label>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* --- LAYER 2: TARGET SELECTOR (4-WAY MATRIX) --- */}
+            {appMode === 'check' && (
+              <div className="target-section" style={{ marginTop: '1.5rem', padding: '1.2rem', backgroundColor: '#252525', borderRadius: '8px' }}>
+                
+                {/* Step 1: Country Picker */}
+                <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold' }}>Step 1: Target Countries</p>
+                <div style={{ display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input type="radio" checked={countryMode === 'all'} onChange={() => { setCountryMode('all'); setSelectedCountries([]) }} />Open to any country
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input type="radio" checked={countryMode === 'specific'} onChange={() => setCountryMode('specific')} />Specific countries (up to {MAX_COUNTRIES})
+                  </label>
+                </div>
+
+                {countryMode === 'specific' && (
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    {universitiesLoading && <p className="compare-status">Loading country list…</p>}
+                    {availableCountries.map((c) => {
+                      const isSelected = selectedCountries.includes(c)
+                      const disabled = !isSelected && selectedCountries.length >= MAX_COUNTRIES
+                      return (
+                        <label key={c} style={{ display: 'inline-block', marginRight: '1.5rem', marginBottom: '0.5rem', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1 }}>
+                          <input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleCountry(c)} style={{ marginRight: '6px' }} />{c}
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Step 2: Program Picker */}
+                {(countryMode === 'all' || selectedCountries.length > 0) && (
+                  <>
+                    <hr style={{ borderColor: '#333', margin: '1rem 0' }} />
+                    <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold' }}>Step 2: Target Programs</p>
+                    <div style={{ display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input type="radio" checked={programMode === 'all'} onChange={() => { setProgramMode('all'); setSelectedUniversities([]) }} />All programs {countryMode === 'specific' ? 'in selected countries' : ''}
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input type="radio" checked={programMode === 'specific'} onChange={() => setProgramMode('specific')} />Pick specific programs
+                      </label>
+                    </div>
+
+                    {programMode === 'specific' && (
+                      <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '0.5rem', background: '#1c1c1c', borderRadius: '4px' }}>
+                        {filteredUniversities.map((u) => {
+                          const isSelected = selectedUniversities.includes(u.university)
+                          return (
+                            <label key={`${u.university}-${u.program}`} style={{ display: 'block', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={isSelected} onChange={() => toggleUniversity(u.university)} style={{ marginRight: '8px' }} />{u.university} — {u.program}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Compare Mode Target Selector */}
+            {appMode === 'compare' && (
+              <div className="target-section" style={{ marginTop: '1.5rem', padding: '1.2rem', backgroundColor: '#252525', borderRadius: '8px' }}>
+                <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold' }}>Select Programs to Compare (up to {MAX_COMPARE})</p>
+                {availableUniversities.map((u) => {
+                  const isSelected = selectedUniversities.includes(u.university)
+                  const disabled = !isSelected && selectedUniversities.length >= MAX_COMPARE
                   return (
-                    <label key={c} style={{ display: 'inline-block', marginRight: '1.5rem', marginBottom: '0.5rem', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1 }}>
-                      <input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleCountry(c)} style={{ marginRight: '6px' }} />{c}
+                    <label key={`${u.university}-${u.program}`} style={{ display: 'block', marginBottom: '0.5rem', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1 }}>
+                      <input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleUniversity(u.university)} style={{ marginRight: '8px' }} />{u.university} — {u.program}
                     </label>
                   )
                 })}
               </div>
             )}
 
-            {/* Step 2: Program Picker */}
-            {(countryMode === 'all' || selectedCountries.length > 0) && (
-              <>
-                <hr style={{ borderColor: '#333', margin: '1rem 0' }} />
-                <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold' }}>Step 2: Target Programs</p>
-                <div style={{ display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input type="radio" checked={programMode === 'all'} onChange={() => { setProgramMode('all'); setSelectedUniversities([]) }} />All programs {countryMode === 'specific' ? 'in selected countries' : ''}
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input type="radio" checked={programMode === 'specific'} onChange={() => setProgramMode('specific')} />Pick specific programs
-                  </label>
-                </div>
-
-                {programMode === 'specific' && (
-                  <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '0.5rem', background: '#1c1c1c', borderRadius: '4px' }}>
-                    {filteredUniversities.map((u) => {
-                      const isSelected = selectedUniversities.includes(u.university)
-                      return (
-                        <label key={`${u.university}-${u.program}`} style={{ display: 'block', marginBottom: '0.5rem', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={isSelected} onChange={() => toggleUniversity(u.university)} style={{ marginRight: '8px' }} />{u.university} — {u.program}
-                        </label>
-                      )
-                    })}
+            {/* --- LAYER 3: DYNAMIC CONTEXTUAL REQUIREMENTS --- */}
+            {isNearTerm && (
+              <div className="contextual-requirements-section" style={{ marginTop: '1.5rem' }}>
+                
+                {/* Country Level: German fields */}
+                {isGermanyInScope && (
+                  <div style={{ padding: '1.5rem', backgroundColor: '#21262d', borderRadius: '8px', border: '1px solid #30363d', marginBottom: '1rem' }}>
+                    <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.05rem', color: '#ffb347' }}>Germany Requirements</h3>
+                    <div className="field-grid">
+                      <label className="field">
+                        German level
+                        <select value={profile.german_level} onChange={set('german_level')}>
+                          <option value="">None / not sure</option>
+                          <option value="A1">A1</option><option value="A2">A2</option><option value="B1">B1</option>
+                          <option value="B2">B2</option><option value="C1">C1</option><option value="C2">C2</option>
+                        </select>
+                      </label>
+                      <label className="field checkbox"><input type="checkbox" checked={profile.is_eu_eea_citizen} onChange={set('is_eu_eea_citizen')} />I'm an EU/EEA citizen</label>
+                      <label className="field checkbox"><input type="checkbox" checked={profile.is_bildungsinlaender} onChange={set('is_bildungsinlaender')} />Completed secondary education in Germany (Bildungsinländer)</label>
+                    </div>
                   </div>
                 )}
-              </>
-            )}
-          </div>
-        )}
 
-        {/* Compare Mode Target Selector */}
-        {appMode === 'compare' && (
-          <div className="target-section" style={{ marginTop: '1.5rem', padding: '1.2rem', backgroundColor: '#252525', borderRadius: '8px' }}>
-            <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold' }}>Select Programs to Compare (up to {MAX_COMPARE})</p>
-            {availableUniversities.map((u) => {
-              const isSelected = selectedUniversities.includes(u.university)
-              const disabled = !isSelected && selectedUniversities.length >= MAX_COMPARE
-              return (
-                <label key={`${u.university}-${u.program}`} style={{ display: 'block', marginBottom: '0.5rem', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1 }}>
-                  <input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleUniversity(u.university)} style={{ marginRight: '8px' }} />{u.university} — {u.program}
-                </label>
-              )
-            })}
-          </div>
-        )}
+                {/* Program Level: Dynamically pulled from backend only when specific programs are targeted */}
+                {backendRequiredFields.size > 0 && (programMode === 'specific' || appMode === 'compare') && (
+                  <div style={{ padding: '1.5rem', backgroundColor: '#161b22', borderRadius: '8px', border: '1px solid #30363d' }}>
+                    <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#ff6b6b' }}>Specific Program Requirements</h3>
+                    
+                    {/* Custom Block: Standardized Tests */}
+                    {(backendRequiredFields.has('gre') || backendRequiredFields.has('gate')) && (
+                      <div className="field-grid">
+                        {backendRequiredFields.has('gre') && (
+                          <>
+                            <label className="field">GRE Quant Scaled (130-170)<input type="number" value={profile.gre_quant_scaled} onChange={set('gre_quant_scaled')} /></label>
+                            <label className="field">GRE Quant Percentile (0-100)<input type="number" value={profile.gre_quant_percentile} onChange={set('gre_quant_percentile')} /></label>
+                            <label className="field">GRE Verbal Percentile<input type="number" value={profile.gre_verbal_percentile} onChange={set('gre_verbal_percentile')} /></label>
+                            <label className="field">GRE AWA<input type="number" step="0.5" value={profile.gre_awa} onChange={set('gre_awa')} /></label>
+                          </>
+                        )}
+                        {backendRequiredFields.has('gate') && (
+                          <label className="field checkbox"><input type="checkbox" checked={profile.gate_score_reported} onChange={set('gate_score_reported')} />I have a GATE score (India only)</label>
+                        )}
+                      </div>
+                    )}
 
-        {/* --- LAYER 3: DYNAMIC CONTEXTUAL REQUIREMENTS --- */}
-        {isNearTerm && (
-          <div className="contextual-requirements-section" style={{ marginTop: '1.5rem' }}>
-            
-            {/* Country Level: German fields */}
-            {isGermanyInScope && (
-               <div style={{ padding: '1.5rem', backgroundColor: '#21262d', borderRadius: '8px', border: '1px solid #30363d', marginBottom: '1rem' }}>
-                 <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.05rem', color: '#ffb347' }}>Germany Requirements</h3>
-                 <div className="field-grid">
-                   <label className="field">
-                     German level
-                     <select value={profile.german_level} onChange={set('german_level')}>
-                       <option value="">None / not sure</option>
-                       <option value="A1">A1</option><option value="A2">A2</option><option value="B1">B1</option>
-                       <option value="B2">B2</option><option value="C1">C1</option><option value="C2">C2</option>
-                     </select>
-                   </label>
-                   <label className="field checkbox"><input type="checkbox" checked={profile.is_eu_eea_citizen} onChange={set('is_eu_eea_citizen')} />I'm an EU/EEA citizen</label>
-                   <label className="field checkbox"><input type="checkbox" checked={profile.is_bildungsinlaender} onChange={set('is_bildungsinlaender')} />Completed secondary education in Germany (Bildungsinländer)</label>
-                 </div>
-               </div>
-            )}
-
-            {/* Program Level: Dynamically pulled from backend only when specific programs are targeted */}
-            {backendRequiredFields.size > 0 && (programMode === 'specific' || appMode === 'compare') && (
-              <div style={{ padding: '1.5rem', backgroundColor: '#161b22', borderRadius: '8px', border: '1px solid #30363d' }}>
-                <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#ff6b6b' }}>Specific Program Requirements</h3>
-                
-                {/* Custom Block: Standardized Tests */}
-                {(backendRequiredFields.has('gre') || backendRequiredFields.has('gate')) && (
-                  <div className="field-grid">
-                    {backendRequiredFields.has('gre') && (
+                    {/* Auto-Generator Block: For unknown requirements scraped by the backend */}
+                    {unknownRequirements.length > 0 && (
                       <>
-                        <label className="field">GRE Quant Scaled (130-170)<input type="number" value={profile.gre_quant_scaled} onChange={set('gre_quant_scaled')} /></label>
-                        <label className="field">GRE Quant Percentile (0-100)<input type="number" value={profile.gre_quant_percentile} onChange={set('gre_quant_percentile')} /></label>
-                        <label className="field">GRE Verbal Percentile<input type="number" value={profile.gre_verbal_percentile} onChange={set('gre_verbal_percentile')} /></label>
-                        <label className="field">GRE AWA<input type="number" step="0.5" value={profile.gre_awa} onChange={set('gre_awa')} /></label>
+                        {(backendRequiredFields.has('gre') || backendRequiredFields.has('gate')) && <hr style={{ borderColor: '#333', margin: '1.5rem 0' }} />}
+                        <div className="field-grid">
+                          {unknownRequirements.map(req => (
+                            <label key={req} className="field">
+                              {formatLabel(req)}
+                              <input type="text" placeholder={`Enter ${formatLabel(req)}...`} value={dynamicProfile[req] || ''} onChange={setDynamic(req)} />
+                            </label>
+                          ))}
+                        </div>
                       </>
                     )}
-                    {backendRequiredFields.has('gate') && (
-                      <label className="field checkbox"><input type="checkbox" checked={profile.gate_score_reported} onChange={set('gate_score_reported')} />I have a GATE score (India only)</label>
-                    )}
                   </div>
-                )}
-
-                {/* Auto-Generator Block: For unknown requirements scraped by the backend */}
-                {unknownRequirements.length > 0 && (
-                  <>
-                    {(backendRequiredFields.has('gre') || backendRequiredFields.has('gate')) && <hr style={{ borderColor: '#333', margin: '1.5rem 0' }} />}
-                    <div className="field-grid">
-                      {unknownRequirements.map(req => (
-                        <label key={req} className="field">
-                          {formatLabel(req)}
-                          <input type="text" placeholder={`Enter ${formatLabel(req)}...`} value={dynamicProfile[req] || ''} onChange={setDynamic(req)} />
-                        </label>
-                      ))}
-                    </div>
-                  </>
                 )}
               </div>
             )}
-          </div>
-        )}
 
-        <button type="submit" disabled={loading} style={{ marginTop: '1.5rem' }}>
-          {loading ? 'Processing...' : appMode === 'compare' ? 'Compare selected' : 'Check eligibility'}
-        </button>
-      </form>
+            <button type="submit" disabled={loading} style={{ marginTop: '1.5rem' }}>
+              {loading ? 'Processing...' : appMode === 'compare' ? 'Compare selected' : 'Check eligibility'}
+            </button>
+          </form>
 
-      {error && <p className="error-banner">{error}</p>}
-      
-      {results && appMode === 'compare' && (
-        <ComparisonTable results={results} />
-      )}
-      
-      {results && appMode === 'check' && (
-        <>
-          <div className="country-filter" style={{ marginTop: '2rem' }}>
-            <label>Filter by country:{' '}
-              <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
-                {['All', ...new Set(results.map(r => r.country))].map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="results">
-            {visibleResults.map((r, i) => <ResultCard key={i} result={r} />)}
-          </div>
+          {error && <p className="error-banner">{error}</p>}
+          
+          {results && appMode === 'compare' && (
+            <ComparisonTable results={results} />
+          )}
+          
+          {results && appMode === 'check' && (
+            <>
+              <div className="country-filter" style={{ marginTop: '2rem' }}>
+                <label>Filter by country:{' '}
+                  <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
+                    {['All', ...new Set(results.map(r => r.country))].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="results">
+                {visibleResults.map((r, i) => <ResultCard key={i} result={r} />)}
+              </div>
+            </>
+          )}
         </>
       )}
+
+      {/* --- RAG CHAT VIEW --- */}
+      {appMode === 'chat' && <RagChatView />}
+
     </div>
   )
 }

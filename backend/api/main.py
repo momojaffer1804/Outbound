@@ -39,6 +39,10 @@ Endpoints:
 
     GET /health
 
+    POST /ask
+        RAG Generation endpoint. Retrieves context, runs the conflict engine, 
+        and synthesizes an answer using Groq.
+
 Design notes:
 - Scraper .run() calls hit the LIVE university pages over the network on
   every request. For a v1/demo slice this is acceptable (matches the
@@ -70,19 +74,30 @@ Design notes:
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
+from groq import Groq
+
+# 1. LOAD ENV VARS FIRST
+load_dotenv()
+
+# 2. INITIALIZE GROQ SAFELY
+# Passing a fallback string prevents Uvicorn from crashing on startup if the .env file is missing.
+# The /ask route's try/except block will cleanly catch the resulting auth error.
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", "missing_key_fallback"))
 
 # --- Make sibling packages importable (ingestion/, eligibility/, retrieval/) ---
-# Assumes the standard repo layout: outbound/backend/{ingestion,eligibility,api,retrieval}/
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(BACKEND_ROOT / "ingestion"))
 sys.path.append(str(BACKEND_ROOT / "eligibility"))
 sys.path.append(str(BACKEND_ROOT / "retrieval"))
+sys.path.append(str(BACKEND_ROOT / "conflict_detection"))
 
 from base_checker import UserProfile  # noqa: E402
 
@@ -90,6 +105,8 @@ from scraper_tum_informatics import TUMInformaticsScraper  # noqa: E402
 from scraper_rwth_computer_science import RWTHComputerScienceScraper  # noqa: E402
 from scraper_kaist_ai import KAISTAIScraper  # noqa: E402
 from scraper_kaist_cs import KAISTCSScraper  # noqa: E402
+from scraper_tum_english_mygermanuniversity import TUMEnglishMyGermanUniversityScraper # noqa: E402
+from scraper_tum_english_yocket import TUMEnglishYocketScraper # noqa: E402
 
 from checker_tum import TUMEligibilityChecker  # noqa: E402
 from checker_rwth import RWTHEligibilityChecker  # noqa: E402
@@ -98,6 +115,7 @@ from checker_kaist_cs import KAISTCSEligibilityChecker  # noqa: E402
 
 from hybrid_retriever import retrieve as hybrid_retrieve  # noqa: E402
 from reranker import rerank  # noqa: E402
+from detect_conflicts import detect_conflicts  # noqa: E402
 
 
 app = FastAPI(title="Outbound Eligibility API")
@@ -112,9 +130,6 @@ app.add_middleware(
 )
 
 
-# One (scraper_class, checker_class) pair per registered university.
-# Adding a 5th university = adding one line here, per the project's own
-# "add one module, touch nothing else" architecture goal.
 UNIVERSITIES = [
     (TUMInformaticsScraper, TUMEligibilityChecker),
     (RWTHComputerScienceScraper, RWTHEligibilityChecker),
@@ -122,18 +137,11 @@ UNIVERSITIES = [
     (KAISTCSScraper, KAISTCSEligibilityChecker),
 ]
 
-# Same scraper list, used by /search for building the retrieval corpus.
-# Deliberately the scraper classes only (not paired with checkers) --
-# /search works over raw requirement TEXT, it has no notion of a user
-# profile or eligibility judgment.
 SEARCH_SCRAPERS = [cls for cls, _ in UNIVERSITIES]
 
 
 class UniversityInfoOut(BaseModel):
-    """Lightweight metadata only -- no scraping, no live network call. For
-    building a university picker UI (e.g. a comparison-view checkbox list)
-    without paying the cost of a full live eligibility check just to show
-    the list of available options."""
+    """Lightweight metadata only -- no scraping, no live network call."""
     university: str
     program: str
     country: str
@@ -147,9 +155,6 @@ def list_universities() -> list[UniversityInfoOut]:
         uni = getattr(checker_cls, "university", checker_cls.__name__)
         prog = getattr(checker_cls, "program", "")
         
-        # To keep this endpoint instant (no live scraping), we assign the known 
-        # active requirements and countries statically here. The frontend uses 
-        # this to instantly render the correct progressive disclosure fields.
         country = "Unknown"
         reqs = ["cgpa", "english_test"]
         
@@ -174,14 +179,9 @@ def list_universities() -> list[UniversityInfoOut]:
 
 
 class EligibilityRequest(BaseModel):
-    """Mirrors base_checker.UserProfile field-for-field. Kept as a separate
-    Pydantic model (rather than reusing the dataclass directly) so FastAPI
-    owns request validation/JSON schema, while UserProfile stays a plain
-    dataclass the checkers can depend on without a FastAPI/pydantic import."""
+    model_config = {"extra": "allow"}
 
-    model_config = {"extra": "allow"} # Allows dynamic fields from the frontend Fallback Generator
-
-    flow: str  # "early_planner" or "near_term"
+    flow: str
 
     citizenship: Optional[str] = None
     undergrad_country: Optional[str] = None
@@ -204,10 +204,7 @@ class EligibilityRequest(BaseModel):
     is_bildungsinlaender: Optional[bool] = None
 
     def to_user_profile(self) -> UserProfile:
-        # Filter out the extra dynamic kwargs before unpacking into the strict dataclass
         known_fields = self.model_dump(exclude_unset=True)
-        # Assuming base_checker.UserProfile expects specific fields. 
-        # Extra kwargs are safely ignored or filtered here depending on dataclass setup.
         return UserProfile(**{k: v for k, v in known_fields.items() if hasattr(UserProfile, k) or k in UserProfile.__annotations__})
 
 
@@ -225,27 +222,13 @@ class UniversityResultOut(BaseModel):
     academic_year: str
     overall_status: str
     judgments: list[RequirementJudgmentOut]
-    error: Optional[str] = None  # set only if this university's scrape/check failed
+    error: Optional[str] = None
 
 
 @app.post("/eligibility", response_model=list[UniversityResultOut])
 def check_eligibility(
     request: EligibilityRequest,
-    universities: Optional[list[str]] = Query(
-        default=None,
-        description=(
-            "Optional repeated param to filter which universities get "
-            "scraped/checked, e.g. ?universities=TU Munich (TUM)&universities=KAIST. "
-            "Names are matched against each checker's `university` attribute. "
-            "Omit to check all registered universities (default, unchanged "
-            "behavior). NOTE: this param needs the explicit Query() annotation "
-            "below -- without it, FastAPI cannot tell whether this list belongs "
-            "in the query string or the JSON body alongside `request`, and "
-            "returns a confusing 422 'field request missing' error instead of "
-            "a clear one. If this signature is edited later and that error "
-            "reappears, check this annotation is still here first."
-        ),
-    ),
+    universities: Optional[list[str]] = Query(default=None),
 ) -> list[UniversityResultOut]:
     profile = request.to_user_profile()
     results: list[UniversityResultOut] = []
@@ -281,11 +264,6 @@ def check_eligibility(
                 ],
             ))
         except Exception as exc:
-            # One university's scrape/check failing (site down, structure
-            # changed, network blocked) must never take down the other
-            # three -- surfaced per-university instead, per the project's
-            # "never silently blend confidence levels" principle applied
-            # to failures too.
             results.append(UniversityResultOut(
                 university=getattr(checker_cls, "university", checker_cls.__name__),
                 program=getattr(checker_cls, "program", ""),
@@ -313,19 +291,10 @@ class SearchResultOut(BaseModel):
 
 @app.get("/search", response_model=list[SearchResultOut])
 def search(
-    q: str = Query(..., min_length=1, description="Free-text question, e.g. 'what language do I need for RWTH?'"),
-    top_k: int = Query(5, ge=1, le=20, description="How many results to return after reranking"),
-    retrieve_k: int = Query(15, ge=1, le=50, description="How many candidates hybrid retrieval pulls BEFORE reranking narrows it down"),
+    q: str = Query(..., min_length=1),
+    top_k: int = Query(5, ge=1, le=20),
+    retrieve_k: int = Query(15, ge=1, le=50),
 ) -> list[SearchResultOut]:
-    """Two-stage search: hybrid_retriever casts a wide net (retrieve_k
-    candidates), reranker narrows that down to the final top_k by actually
-    scoring query+candidate pairs together. retrieve_k is deliberately
-    larger than top_k and exposed as a param rather than hardcoded, since
-    the right ratio between "how wide to search" and "how many to keep"
-    is a tuning knob, not a fixed constant -- see reranker.py's own
-    docstring on why reranking only reorders a SMALL shortlist rather than
-    being run over the entire corpus directly.
-    """
     all_reqs = []
     for scraper_cls in SEARCH_SCRAPERS:
         all_reqs.extend(scraper_cls().run())
@@ -352,3 +321,89 @@ def search(
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+# --- RAG CHATBOT ENDPOINT ---
+
+class AskRequest(BaseModel):
+    question: str
+
+class AskResponse(BaseModel):
+    answer: str
+    sources: list[str]
+
+
+@app.post("/ask", response_model=AskResponse)
+def ask_question(request: AskRequest):
+    """Retrieves context, runs the conflict engine, and synthesizes an answer using Groq."""
+    
+    # 1. Gather all requirements to search through
+    all_reqs = []
+    third_party_scrapers = [TUMEnglishMyGermanUniversityScraper, TUMEnglishYocketScraper]
+    for scraper_cls in SEARCH_SCRAPERS + third_party_scrapers:
+        try:
+            all_reqs.extend(scraper_cls().run())
+        except Exception:
+            pass
+
+    # 2. Retrieve the top 5 most relevant facts for the user's question
+    candidates = hybrid_retrieve(request.question, top_k=15, requirements=all_reqs)
+    reranked = rerank(request.question, [c.requirement for c in candidates], top_k=5)
+    retrieved_reqs = [r.record for r in reranked]
+
+    # 3. Check if any of these retrieved facts have known conflicts
+    all_conflicts = detect_conflicts(all_reqs)
+    relevant_conflicts = []
+    
+    for conflict in all_conflicts:
+        for req in retrieved_reqs:
+            if req.university == conflict.university and req.requirement_type == conflict.requirement_type:
+                relevant_conflicts.append(conflict)
+                break
+
+    # 4. Construct the prompt with the Context and the Conflict Warnings
+    context_str = "\n".join([
+        f"- {r.university} ({r.program}): {r.requirement_type} = '{r.value}' (Source Tier {r.source_tier})"
+        for r in retrieved_reqs
+    ])
+    
+    conflict_str = ""
+    if relevant_conflicts:
+        conflict_str = "⚠️ CRITICAL DATA CONFLICTS DETECTED (MUST WARN USER):\n"
+        for c in relevant_conflicts:
+            conflict_str += (
+                f"- For {c.university} {c.requirement_type}, third-party sites claim '{c.secondary[0].value}', "
+                f"but the OFFICIAL Tier-1 source states '{c.authoritative.value}'.\n"
+            )
+
+    system_prompt = f"""You are Outbound, an expert Master's degree admissions assistant.
+Your job is to answer the user's question STRICTLY using the verified context records below.
+Do not invent or assume information. If the answer is not in the context, say "The official requirements do not specify this."
+
+CONTEXT RECORDS:
+{context_str}
+
+{conflict_str}
+
+INSTRUCTIONS:
+1. Answer clearly and concisely.
+2. If there is a CRITICAL DATA CONFLICT listed above, you MUST explicitly warn the user in your response. State the false third-party claim, but emphasize that the Official Tier-1 source is the correct rule to follow.
+"""
+
+    # 5. Generate the answer using Groq (Llama 3 8B)
+    try:
+        chat_completion = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": request.question}
+            ],
+            model="openai/gpt-oss-20b"
+        )
+        answer_text = chat_completion.choices[0].message.content
+    except Exception as e:
+        answer_text = f"Error communicating with LLM: {str(e)}. Please check your GROQ_API_KEY in the .env file."
+
+    # 6. Extract unique source URLs to cite
+    unique_sources = list({r.source_url for r in retrieved_reqs})
+    
+    return AskResponse(answer=answer_text, sources=unique_sources)
