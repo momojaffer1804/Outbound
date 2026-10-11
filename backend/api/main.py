@@ -346,9 +346,9 @@ def ask_question(request: AskRequest):
         except Exception:
             pass
 
-    # 2. Retrieve the top 5 most relevant facts for the user's question
-    candidates = hybrid_retrieve(request.question, top_k=15, requirements=all_reqs)
-    reranked = rerank(request.question, [c.requirement for c in candidates], top_k=5)
+    # 2. Retrieve top relevant facts for the user's question (expanded to 15 to prevent single-university tunnel vision)
+    candidates = hybrid_retrieve(request.question, top_k=30, requirements=all_reqs)
+    reranked = rerank(request.question, [c.requirement for c in candidates], top_k=15)
     retrieved_reqs = [r.record for r in reranked]
 
     # 3. Check if any of these retrieved facts have known conflicts

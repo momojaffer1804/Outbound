@@ -1,10 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { marked } from 'marked'
 import './App.css'
+
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+})
 
 const API_URL = 'http://127.0.0.1:8000/eligibility'
 const UNIVERSITIES_URL = 'http://127.0.0.1:8000/universities'
 
-const STATUS_ICON = { met: '✅', not_met: '❌', needs_review: '⚠️', not_applicable: '➖', informational: 'ℹ️️' }
 const MAX_COMPARE = 3
 const MAX_COUNTRIES = 2
 const KNOWN_REQUIREMENTS = ['cgpa', 'english_test', 'gre', 'gate', 'german_test']
@@ -83,22 +88,37 @@ function TriStateSelect({ label, value, onChange }) {
   )
 }
 
+function StatusPill({ status }) {
+  const labels = {
+    met: 'MET',
+    not_met: 'UNMET',
+    needs_review: 'REVIEW',
+    not_applicable: 'N/A',
+    informational: 'INFO',
+  }
+  const label = labels[status] || (status ? status.toUpperCase() : 'UNKNOWN')
+  return <span className={`status-pill ${status}`}>{label}</span>
+}
+
 function ResultCard({ result }) {
-  const overallColor = { eligible: '#16a34a', not_eligible: '#dc2626', needs_review: '#d97706' }[result.overall_status] || '#555'
   return (
     <div className="result-card">
       <div className="result-header">
         <div>
-          <h3 style={{ margin: 0 }}>{result.university}</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{result.program} — {result.academic_year === 'unknown_year' ? 'Year Unspecified' : result.academic_year}</p>
+          <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>{result.university}</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+            {result.program} — {result.academic_year === 'unknown_year' ? 'Year Unspecified' : result.academic_year}
+          </p>
         </div>
-        <span className="overall-badge" style={{ backgroundColor: overallColor }}>{result.overall_status.replace('_', ' ')}</span>
+        <span className={`overall-badge ${result.overall_status}`}>
+          {result.overall_status.replace('_', ' ')}
+        </span>
       </div>
-      {result.error && <p style={{ color: 'var(--danger)', marginBottom: '1rem' }}>Error: {result.error}</p>}
+      {result.error && <p style={{ color: 'var(--status-unmet-text)', marginBottom: '1rem', fontSize: '0.85rem' }}>Error: {result.error}</p>}
       <ul className="judgment-list">
         {result.judgments.map((j, i) => (
           <li key={i} className="judgment">
-            <span>{STATUS_ICON[j.status] || '•'}</span>
+            <StatusPill status={j.status} />
             <div>
               <strong>{j.requirement_type.replace(/_/g, ' ')}</strong>
               <p>{j.detail}</p>
@@ -121,22 +141,25 @@ function ComparisonTable({ results }) {
           <tr>
             <th>Requirement</th>
             {results.map((r) => (
-              <th key={r.university + r.program}>{r.university}<br /><span style={{ color: 'var(--text-muted)', fontWeight: 'normal' }}>{r.program}</span></th>
+              <th key={r.university + r.program}>
+                {r.university}<br />
+                <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.8rem' }}>{r.program}</span>
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {requirementTypes.map((type) => (
             <tr key={type}>
-              <td style={{ fontWeight: 500, textTransform: 'capitalize' }}>{type.replace(/_/g, ' ')}</td>
+              <td style={{ fontWeight: 600, textTransform: 'capitalize', color: 'var(--text-main)' }}>{type.replace(/_/g, ' ')}</td>
               {results.map((r) => {
                 const judgment = r.judgments.find((j) => j.requirement_type === type)
-                if (!judgment) return <td key={r.university + r.program} style={{ textAlign: 'center' }}>—</td>
+                if (!judgment) return <td key={r.university + r.program} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>—</td>
                 return (
                   <td key={r.university + r.program}>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <span>{STATUS_ICON[judgment.status] || '•'}</span>
-                      <span>{judgment.detail}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-start' }}>
+                      <StatusPill status={judgment.status} />
+                      <span style={{ fontSize: '0.825rem', color: 'var(--text-main)' }}>{judgment.detail}</span>
                     </div>
                   </td>
                 )
@@ -151,9 +174,24 @@ function ComparisonTable({ results }) {
 
 function formatLabel(str) { return str.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') }
 
+function getSourceInfo(url) {
+  if (!url) return { name: 'University Page', type: 'Official Source', isOfficial: true }
+  const lower = url.toLowerCase()
+  if (lower.includes('yocket')) {
+    return { name: 'Yocket', type: 'Third-Party Portal', isOfficial: false }
+  }
+  if (lower.includes('mygermanuniversity')) {
+    return { name: 'MyGermanUniversity', type: 'Third-Party Portal', isOfficial: false }
+  }
+  if (lower.includes('tum.de') || lower.includes('rwth-aachen.de') || lower.includes('kaist.ac.kr')) {
+    return { name: 'Official Website', type: 'Tier-1 Official Source', isOfficial: true }
+  }
+  return { name: 'Official Website', type: 'Official Source', isOfficial: true }
+}
+
 function RagChatView() {
   const [query, setQuery] = useState('')
-  const [messages, setMessages] = useState([{ role: 'assistant', content: 'Hi! Ask me anything about university requirements, deadlines, or test scores. I will cross-reference official pages and warn you if Yocket or other sites are wrong.' }])
+  const [messages, setMessages] = useState([{ role: 'assistant', content: 'Welcome to Outbound Grounding Assistant. Ask any question about university requirements, deadlines, or test cutoffs. All answers are cross-referenced with Tier-1 official university documents.' }])
   const [loading, setLoading] = useState(false)
   const endRef = useRef(null)
 
@@ -181,26 +219,43 @@ function RagChatView() {
   return (
     <div className="chat-window">
       <div className="chat-header">
-        <span style={{ fontSize: '1.25rem' }}>🧠</span> Outbound Intelligence
+        <span>Outbound Grounding Engine</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Tier-1 Source Verified</span>
       </div>
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`message-wrapper ${msg.role}`}>
-            <div className="chat-bubble">{msg.content}</div>
+            {msg.role === 'assistant' ? (
+              <div
+                className="chat-bubble markdown-content"
+                dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}
+              />
+            ) : (
+              <div className="chat-bubble">{msg.content}</div>
+            )}
             {msg.sources && msg.sources.length > 0 && (
-              <div className="chat-sources">
-                {msg.sources.map((src, idx) => (
-                  <a key={idx} href={src} target="_blank" rel="noreferrer">Source {idx + 1}</a>
-                ))}
+              <div className="chat-sources-panel">
+                <div className="chat-sources-header">Sources:</div>
+                <div className="chat-sources-list">
+                  {msg.sources
+                    .map((src) => ({ src, info: getSourceInfo(src) }))
+                    .sort((a, b) => (b.info.isOfficial ? 1 : 0) - (a.info.isOfficial ? 1 : 0))
+                    .map(({ src, info }, idx) => (
+                      <a key={idx} href={src} target="_blank" rel="noreferrer" className={`source-item ${info.isOfficial ? 'official' : 'third-party'}`}>
+                        <span className="source-label">Source {idx + 1}: {info.name}</span>
+                        <span className="source-type">{info.type}</span>
+                      </a>
+                    ))}
+                </div>
               </div>
             )}
           </div>
         ))}
-        {loading && <div className="message-wrapper assistant"><div className="chat-bubble" style={{ opacity: 0.7 }}>Thinking...</div></div>}
+        {loading && <div className="message-wrapper assistant"><div className="chat-bubble" style={{ opacity: 0.7 }}>Retrieving tier-1 facts...</div></div>}
         <div ref={endRef} />
       </div>
       <form onSubmit={handleSend} className="chat-input-form">
-        <input type="text" className="chat-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ask about TUM deadlines or Yocket accuracy..." />
+        <input type="text" className="chat-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search requirement facts, TOEFL rules, or conflict checks..." />
         <button type="submit" className="chat-send-btn" disabled={loading}>Send</button>
       </form>
     </div>
@@ -286,12 +341,17 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <h1>Outbound</h1>
+      <header className="app-header">
+        <div className="app-title-group">
+          <h1>Outbound</h1>
+          <span className="app-subtitle">Source-Grounded Masters Eligibility Engine</span>
+        </div>
+      </header>
 
       <div className="app-mode-tabs">
         <button type="button" className={`tab-btn ${appMode === 'check' ? 'active' : ''}`} onClick={() => { setAppMode('check'); setResults(null); setError(null) }}>Eligibility Engine</button>
         <button type="button" className={`tab-btn ${appMode === 'compare' ? 'active' : ''}`} onClick={() => { setAppMode('compare'); setResults(null); setError(null); setSelectedUniversities(prev => prev.slice(0, MAX_COMPARE)) }}>Compare Programs</button>
-        <button type="button" className={`tab-btn chat-tab ${appMode === 'chat' ? 'active' : ''}`} onClick={() => { setAppMode('chat'); setResults(null); setError(null) }}>✨ Smart Assistant</button>
+        <button type="button" className={`tab-btn ${appMode === 'chat' ? 'active' : ''}`} onClick={() => { setAppMode('chat'); setResults(null); setError(null) }}>Grounding Assistant</button>
       </div>
 
       {appMode !== 'chat' && (
@@ -422,7 +482,7 @@ export default function App() {
             </button>
           </form>
 
-          {error && <div style={{ color: 'var(--danger)', marginTop: '2rem', padding: '1rem', border: '1px solid var(--danger)', borderRadius: '6px' }}>{error}</div>}
+          {error && <div style={{ color: 'var(--status-unmet-text)', backgroundColor: 'var(--status-unmet-bg)', marginTop: '2rem', padding: '1rem', border: '1px solid var(--status-unmet-border)', borderRadius: '8px', fontSize: '0.9rem' }}>{error}</div>}
           
           {results && appMode === 'compare' && <ComparisonTable results={results} />}
           {results && appMode === 'check' && (

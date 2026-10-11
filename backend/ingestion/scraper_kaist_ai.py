@@ -199,6 +199,47 @@ class KAISTAIScraper(BaseUniversityScraper):
             notes="Known gap: Spring intake dates not yet verified.",
         )
 
+        # --- Tuition & Fees ---
+        add(
+            requirement_type="tuition_fees",
+            value=(
+                "Standard tuition at KAIST for graduate programs is approximately "
+                "3,400,000 to 4,800,000 KRW per semester (~$2,500–$3,600 USD). "
+                "However, virtually all admitted international graduate students receive "
+                "the KAIST International Student Scholarship which covers 100% of the tuition."
+            ),
+            notes="Tuition is fully subsidized for admitted international students.",
+        )
+
+        # --- Scholarships & Funding ---
+        add(
+            requirement_type="scholarships_funding",
+            value=(
+                "KAIST International Student Scholarship: 100% tuition exemption "
+                "for all normal degree semesters, plus a monthly living stipend "
+                "of approximately 350,000 KRW per month for Master's students, "
+                "plus coverage under the Korean National Health Insurance. "
+                "Applicants are automatically considered upon admission."
+            ),
+        )
+
+        # --- Document Checklist ---
+        add(
+            requirement_type="document_checklist",
+            value=(
+                "Required documents for KAIST international graduate application: "
+                "1. Online Application Form (printed and signed); "
+                "2. Statement of Purpose (SOP / Study Plan) detailing academic background and research interests; "
+                "3. Two Letters of Recommendation from academic professors or advisors; "
+                "4. Official Bachelor's Degree Certificate (or diploma); "
+                "5. Official Academic Transcripts from all attended colleges/universities; "
+                "6. Official English Proficiency Test Score Report (TOEFL iBT min 83 or 4.5, IELTS min 6.5, TOEIC min 720, or TEPS min 326); "
+                "7. Copy of Applicant and Parents' Passports / National ID (proof of foreign citizenship); "
+                "8. Certificate of Facts Concerning Entry & Exit (if applicable); "
+                "9. Financial Resources Statement."
+            ),
+        )
+
         return reqs
 
 

@@ -154,6 +154,40 @@ class RWTHComputerScienceScraper(BaseUniversityScraper):
                   "1 September (summer semester).",
         )
 
+        # --- Tuition & Fees (No tuition fees in North Rhine-Westphalia) ---
+        add(
+            requirement_type="tuition_fees",
+            value="RWTH Aachen charges €0 tuition fees for all students, including "
+                  "international and non-EU students. Students must only pay a "
+                  "semester contribution (Semesterbeitrag) of approximately €315–€325 "
+                  "per semester, which covers student body services and a public "
+                  "transportation semester ticket for regional travel in Germany.",
+            notes="Real contrast with TUM (which charges €4,000–€6,000/sem for non-EU students).",
+        )
+
+        # --- Document Checklist ---
+        add(
+            requirement_type="document_checklist",
+            value="Required application documents for RWTH Aachen M.Sc. Computer Science: "
+                  "1. Official Bachelor's Degree Certificate and complete Transcripts of Records; "
+                  "2. Detailed Module Catalog / Course Descriptions (Syllabus) for all completed "
+                  "computer science and mathematics subjects (essential for the 42 CP gap evaluation); "
+                  "3. GRE General Test score report (Quant > 75th percentile, Verbal > 15th percentile, "
+                  "AW >= 3.5) for non-EU/EEA applicants; "
+                  "4. Proof of German proficiency at C1 level (DSH-2, TestDaF 4x4, telc C1 Hochschule); "
+                  "5. Proof of English proficiency at B2 level; "
+                  "6. Complete Curriculum Vitae (CV) and Statement of Motivation; "
+                  "7. APS Certificate (Akademische Prüfstelle) mandatory for Indian, Chinese, and Vietnamese applicants.",
+        )
+
+        # --- Scholarships & Funding ---
+        add(
+            requirement_type="scholarships_funding",
+            value="RWTH Aachen students are eligible to apply for the Deutschlandstipendium "
+                  "(RWTH Education Fund, €300/month merit scholarship) and external DAAD "
+                  "scholarships. No direct university tuition waiver is needed since tuition is €0.",
+        )
+
         return reqs
 
 
