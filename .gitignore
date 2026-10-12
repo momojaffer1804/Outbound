@@ -11,6 +11,7 @@ frontend/dist/
 # Data (raw PDFs are large, don't commit them - or use Git LFS if you want them tracked)
 data/raw_pdfs/
 data/processed/
+backend/data/*.db
 
 # OS
 .DS_Store
