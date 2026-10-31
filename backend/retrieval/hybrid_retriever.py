@@ -40,6 +40,8 @@ SCRAPERS = [
 ]
 
 _embedder = None
+_cached_texts = None
+_cached_doc_embeddings = None
 
 
 def _get_embedder():
@@ -100,7 +102,13 @@ def retrieve(query: str, top_k: int = 5, requirements: list | None = None,
         try:
             import numpy as np
             model = _get_embedder()
-            doc_embeddings = model.encode(texts)
+            global _cached_texts, _cached_doc_embeddings
+            if _cached_texts == texts and _cached_doc_embeddings is not None:
+                doc_embeddings = _cached_doc_embeddings
+            else:
+                doc_embeddings = model.encode(texts)
+                _cached_texts = list(texts)
+                _cached_doc_embeddings = doc_embeddings
             query_embedding = model.encode([query])[0]
             norms = np.linalg.norm(doc_embeddings, axis=1) * np.linalg.norm(query_embedding)
             norms[norms == 0] = 1e-8

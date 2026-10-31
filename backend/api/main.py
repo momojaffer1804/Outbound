@@ -301,8 +301,8 @@ def ask_question(request: AskRequest):
         except Exception:
             pass
 
-    candidates = hybrid_retrieve(request.question, top_k=30, requirements=all_reqs)
-    reranked = rerank(request.question, [c.requirement for c in candidates], top_k=15)
+    candidates = hybrid_retrieve(request.question, top_k=12, requirements=all_reqs)
+    reranked = rerank(request.question, [c.requirement for c in candidates], top_k=8)
     retrieved_reqs = [r.record for r in reranked]
 
     all_conflicts = detect_conflicts(all_reqs)
@@ -441,6 +441,18 @@ def cache_refresh(request: CacheRefreshRequest = CacheRefreshRequest()):
 @app.on_event("startup")
 def on_startup():
     scraper_cache.warm_up(ALL_SCRAPERS)
+    try:
+        reqs = []
+        for s in ALL_SCRAPERS:
+            try:
+                reqs.extend(scraper_cache.get_cached_or_fetch(s))
+            except Exception:
+                pass
+        if reqs:
+            hybrid_retrieve("admission requirements", top_k=5, requirements=reqs)
+            rerank("admission requirements", [r for r in reqs[:5]])
+    except Exception as exc:
+        logger.warning("Startup retriever warm-up failed: %s", exc)
 
 
 # --- STATIC ASSET SERVING ---
