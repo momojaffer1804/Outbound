@@ -63,19 +63,29 @@ Evaluated across a benchmark dataset of 32 hand-labeled admissions queries spann
 
 ---
 
-### Deployment & Running Outbound
+## Deployment & Running Outbound
 
-#### 1. Docker (Recommended)
+### 1. Docker Compose (Local Deployment)
+
+Build and start the application using Docker Compose:
+
 ```bash
 docker compose up --build -d
 ```
+
+Once the containers are running, access the application through the following endpoints:
+
 - **Frontend UI:** [http://localhost:3000](http://localhost:3000)
 - **Backend API:** [http://localhost:8000](http://localhost:8000)
 - **Interactive API Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Health Check Endpoint:** [http://localhost:8000/health](http://localhost:8000/health)
 
-#### 2. Live Cloud Deployment
-Outbound is live and deployed on Render:
+### 2. Live Cloud Deployment (Render)
+
+Outbound is deployed and publicly accessible through Render.
+
+**Production URL:**
+
 - **Live Application:** [https://outbound-3i53.onrender.com/](https://outbound-3i53.onrender.com/)
 
 ---
