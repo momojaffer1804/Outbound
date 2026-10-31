@@ -65,7 +65,7 @@ Evaluated across a benchmark dataset of 32 hand-labeled admissions queries spann
 
 ### Deployment & Running Outbound
 
-#### 1. Docker Compose (Recommended)
+#### 1. Docker (Recommended)
 ```bash
 docker compose up --build -d
 ```
@@ -74,33 +74,9 @@ docker compose up --build -d
 - **Interactive API Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Health Check Endpoint:** [http://localhost:8000/health](http://localhost:8000/health)
 
-#### 2. Automated Run Scripts
-- **Windows:** Double-click or run `deploy.bat`
-- **Linux / macOS:** Run `./deploy.sh`
-
-#### 3. Standalone Fullstack Production Run
-The FastAPI backend includes static file serving to run the entire application on a single port:
-```bash
-# 1. Build frontend assets
-cd frontend
-npm install
-npm run build
-cd ..
-
-# 2. Run unified server
-export PYTHONPATH=backend
-python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000
-```
-
-#### Environment Variables (`.env`)
-Create a `.env` file in the root directory:
-```env
-# Required for RAG Grounding Assistant (/ask endpoint)
-GROQ_API_KEY=your_groq_api_key_here
-
-# Optional: set only if frontend and backend are hosted on separate domains
-VITE_API_URL=
-```
+#### 2. Live Cloud Deployment
+Outbound is live and deployed on Render:
+- **Live Application:** [https://outbound-3i53.onrender.com/](https://outbound-3i53.onrender.com/)
 
 ---
 
