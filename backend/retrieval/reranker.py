@@ -88,15 +88,21 @@ def rerank(
     if not candidates:
         return []
 
-    encoder = _get_cross_encoder(model_name)
-    pairs = [(query, _record_to_text(c)) for c in candidates]
-    scores = encoder.predict(pairs)
+    try:
+        encoder = _get_cross_encoder(model_name)
+        pairs = [(query, _record_to_text(c)) for c in candidates]
+        scores = encoder.predict(pairs)
 
-    results = [
-        RerankedResult(record=c, rerank_score=float(s))
-        for c, s in zip(candidates, scores)
-    ]
-    results.sort(key=lambda r: r.rerank_score, reverse=True)
+        results = [
+            RerankedResult(record=c, rerank_score=float(s))
+            for c, s in zip(candidates, scores)
+        ]
+        results.sort(key=lambda r: r.rerank_score, reverse=True)
+    except Exception:
+        results = [
+            RerankedResult(record=c, rerank_score=1.0)
+            for c in candidates
+        ]
 
     if top_k is not None:
         results = results[:top_k]

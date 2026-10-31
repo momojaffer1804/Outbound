@@ -438,21 +438,26 @@ def cache_refresh(request: CacheRefreshRequest = CacheRefreshRequest()):
 
 # --- STARTUP EVENT ---
 
+import threading
+
 @app.on_event("startup")
 def on_startup():
-    scraper_cache.warm_up(ALL_SCRAPERS)
-    try:
-        reqs = []
-        for s in ALL_SCRAPERS:
-            try:
-                reqs.extend(scraper_cache.get_cached_or_fetch(s))
-            except Exception:
-                pass
-        if reqs:
-            hybrid_retrieve("admission requirements", top_k=5, requirements=reqs)
-            rerank("admission requirements", [r for r in reqs[:5]])
-    except Exception as exc:
-        logger.warning("Startup retriever warm-up failed: %s", exc)
+    def background_warmup():
+        try:
+            scraper_cache.warm_up(ALL_SCRAPERS)
+            reqs = []
+            for s in ALL_SCRAPERS:
+                try:
+                    reqs.extend(scraper_cache.get_cached_or_fetch(s))
+                except Exception:
+                    pass
+            if reqs:
+                hybrid_retrieve("admission requirements", top_k=5, requirements=reqs)
+        except Exception as exc:
+            logger.warning("Background warm-up failed: %s", exc)
+
+    # Launch in background so uvicorn binds and responds to Render health checks instantly (<10ms)
+    threading.Thread(target=background_warmup, daemon=True).start()
 
 
 # --- STATIC ASSET SERVING ---
