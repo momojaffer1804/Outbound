@@ -1,62 +1,8 @@
 """
 outbound/backend/api/main.py
 
-The ONLY module allowed to wire ingestion -> eligibility together, per the
-project's modularity rule (base_scraper.py's own docstring: "Scrapers never
-talk to each other or to other modules directly -- only api/ sequences
-ingestion -> extraction -> everything else"). Nothing in ingestion/ or
-eligibility/ imports from here or from each other directly.
-
-Endpoints:
-    POST /eligibility
-        body: a JSON profile (see EligibilityRequest below)
-        optional query param: universities (repeated) -- filter to only the
-                 named universities instead of checking all registered ones.
-                 Matched against each checker's `university` attribute.
-        returns: a list of per-university eligibility results, one per
-                 checked university, each with overall_status and a full
-                 breakdown of individual requirement judgments.
-
-    GET /universities
-        No scraping, no live network call -- just name + program metadata
-        for every registered university, for building a picker UI fast
-        (e.g. a comparison-view checkbox list) without paying the cost of
-        a full live eligibility check just to show the available options.
-        Includes country and active_requirements for frontend dynamic rendering.
-
-    GET /search?q=...&top_k=5
-        Free-text search over the requirements corpus, for questions like
-        "what language do I need for RWTH?" without knowing the answer
-        lives in a record called `german_test`. Two-stage pipeline:
-        hybrid_retriever.retrieve() casts a wide net (BM25 + embeddings,
-        fused via RRF) over ALL requirement records across every
-        registered university, then reranker.rerank() re-scores that
-        shortlist with a cross-encoder for final precision. Per
-        hybrid_retriever.py's own docstring, this is explicitly NOT used
-        by eligibility-checking (that stays direct dictionary lookup by
-        requirement_type, in the checkers) -- this is a separate,
-        additive feature.
-
-    GET /health
-
-    POST /ask
-        RAG Generation endpoint. Retrieves context, runs the conflict engine, 
-        and synthesizes an answer using Groq.
-
-Design notes:
-- Scraper results are now CACHED in a local SQLite database
-  (backend/data/cache.db) with a 24-hour TTL. On first request or after
-  expiration, the cache calls scraper.run() once, persists the result,
-  and all subsequent requests within the TTL window return instantly from
-  local storage (~2ms vs ~5s live). If a live refresh fails but stale
-  cached data exists, the stale snapshot is returned with a warning
-  (stale-while-revalidate pattern) rather than crashing the user's
-  request.
-- The cache is warmed on server startup so even the first user interaction
-  is instant (no cold-start penalty).
-- `country` is included per-university in the /eligibility response so the
-  frontend can offer a "filter by country" dropdown without needing a
-  separate endpoint.
+Central FastAPI service connecting ingestion, eligibility, hybrid retrieval,
+asymmetric conflict resolution, persistent SQLite caching, and coursework/document auditing.
 """
 
 from __future__ import annotations
@@ -64,54 +10,62 @@ from __future__ import annotations
 import sys
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from groq import Groq
 
-# 1. LOAD ENV VARS FIRST
 load_dotenv()
 
-# 2. INITIALIZE GROQ SAFELY
-# Passing a fallback string prevents Uvicorn from crashing on startup if the .env file is missing.
-# The /ask route's try/except block will cleanly catch the resulting auth error.
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", "missing_key_fallback"))
 
-# --- Make sibling packages importable (ingestion/, eligibility/, retrieval/, cache/) ---
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(BACKEND_ROOT / "ingestion"))
 sys.path.append(str(BACKEND_ROOT / "eligibility"))
 sys.path.append(str(BACKEND_ROOT / "retrieval"))
 sys.path.append(str(BACKEND_ROOT / "conflict_detection"))
 sys.path.append(str(BACKEND_ROOT / "cache"))
+sys.path.append(str(BACKEND_ROOT / "extraction"))
 
-from base_checker import UserProfile  # noqa: E402
+from base_checker import UserProfile
 
-from scraper_tum_informatics import TUMInformaticsScraper  # noqa: E402
-from scraper_rwth_computer_science import RWTHComputerScienceScraper  # noqa: E402
-from scraper_kaist_ai import KAISTAIScraper  # noqa: E402
-from scraper_kaist_cs import KAISTCSScraper  # noqa: E402
-from scraper_tum_english_mygermanuniversity import TUMEnglishMyGermanUniversityScraper # noqa: E402
-from scraper_tum_english_yocket import TUMEnglishYocketScraper # noqa: E402
+from scraper_tum_informatics import TUMInformaticsScraper
+from scraper_rwth_computer_science import RWTHComputerScienceScraper
+from scraper_kaist_ai import KAISTAIScraper
+from scraper_kaist_cs import KAISTCSScraper
+from scraper_tu_berlin_cs import TUBerlinCSScraper
+from scraper_stuttgart_cs import StuttgartCSScraper
+from scraper_tu_darmstadt_cs import TUDarmstadtCSScraper
+from scraper_tu_delft_cs import TUDelftCSScraper
+from scraper_eth_zurich_cs import ETHZurichCSScraper
+from scraper_nus_computing import NUSComputingScraper
 
-from checker_tum import TUMEligibilityChecker  # noqa: E402
-from checker_rwth import RWTHEligibilityChecker  # noqa: E402
-from checker_kaist_ai import KAISTAIEligibilityChecker  # noqa: E402
-from checker_kaist_cs import KAISTCSEligibilityChecker  # noqa: E402
+from scraper_tum_english_mygermanuniversity import TUMEnglishMyGermanUniversityScraper
+from scraper_tum_english_yocket import TUMEnglishYocketScraper
 
-from hybrid_retriever import retrieve as hybrid_retrieve  # noqa: E402
-from reranker import rerank  # noqa: E402
-from detect_conflicts import detect_conflicts  # noqa: E402
-from scraper_cache import scraper_cache  # noqa: E402
+from checker_tum import TUMEligibilityChecker
+from checker_rwth import RWTHEligibilityChecker
+from checker_kaist_ai import KAISTAIEligibilityChecker
+from checker_kaist_cs import KAISTCSEligibilityChecker
+from checker_tu_berlin import TUBerlinEligibilityChecker
+from checker_stuttgart import StuttgartEligibilityChecker
+from checker_tu_darmstadt import TUDarmstadtEligibilityChecker
+from checker_tu_delft import TUDelftEligibilityChecker
+from checker_eth_zurich import ETHZurichEligibilityChecker
+from checker_nus import NUSEligibilityChecker
 
+from hybrid_retriever import retrieve as hybrid_retrieve
+from reranker import rerank
+from detect_conflicts import detect_conflicts
+from scraper_cache import scraper_cache
+from coursework_auditor import audit_coursework
+from document_parser import extract_text_from_pdf, parse_academic_document
 
 app = FastAPI(title="Outbound Eligibility API")
 
-# Wide open for local frontend dev. Tighten to specific origins before any
-# real deployment.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -119,12 +73,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 UNIVERSITIES = [
     (TUMInformaticsScraper, TUMEligibilityChecker),
     (RWTHComputerScienceScraper, RWTHEligibilityChecker),
     (KAISTAIScraper, KAISTAIEligibilityChecker),
     (KAISTCSScraper, KAISTCSEligibilityChecker),
+    (TUBerlinCSScraper, TUBerlinEligibilityChecker),
+    (StuttgartCSScraper, StuttgartEligibilityChecker),
+    (TUDarmstadtCSScraper, TUDarmstadtEligibilityChecker),
+    (TUDelftCSScraper, TUDelftEligibilityChecker),
+    (ETHZurichCSScraper, ETHZurichEligibilityChecker),
+    (NUSComputingScraper, NUSEligibilityChecker),
 ]
 
 SEARCH_SCRAPERS = [cls for cls, _ in UNIVERSITIES]
@@ -132,7 +91,6 @@ ALL_SCRAPERS = SEARCH_SCRAPERS + [TUMEnglishMyGermanUniversityScraper, TUMEnglis
 
 
 class UniversityInfoOut(BaseModel):
-    """Lightweight metadata only -- no scraping, no live network call."""
     university: str
     program: str
     country: str
@@ -142,22 +100,29 @@ class UniversityInfoOut(BaseModel):
 @app.get("/universities", response_model=list[UniversityInfoOut])
 def list_universities() -> list[UniversityInfoOut]:
     results = []
-    for _, checker_cls in UNIVERSITIES:
+    for scraper_cls, checker_cls in UNIVERSITIES:
         uni = getattr(checker_cls, "university", checker_cls.__name__)
         prog = getattr(checker_cls, "program", "")
-        
-        country = "Unknown"
+        country = getattr(scraper_cls, "country", "Unknown")
+
         reqs = ["cgpa", "english_test"]
-        
         if "TUM" in uni or "Munich" in uni:
-            country = "Germany"
             reqs.extend(["gre", "gate"])
         elif "RWTH" in uni or "Aachen" in uni:
-            country = "Germany"
             reqs.extend(["gre", "german_test"])
-        elif "KAIST" in uni or "Seoul" in uni:
-            country = "South Korea"
-            
+        elif "Berlin" in uni:
+            reqs.extend(["german_test"])
+        elif "Stuttgart" in uni:
+            reqs.extend(["gre"])
+        elif "Darmstadt" in uni:
+            reqs.extend(["gre"])
+        elif "Delft" in uni:
+            reqs.extend(["gre"])
+        elif "ETH" in uni or "Zurich" in uni:
+            reqs.extend(["gre"])
+        elif "NUS" in uni or "Singapore" in uni:
+            reqs.extend(["gre", "gate"])
+
         results.append(
             UniversityInfoOut(
                 university=uni,
@@ -237,7 +202,7 @@ def check_eligibility(
         try:
             raw_requirements = scraper_cache.get_cached_or_fetch(scraper_cls)
             result = checker_cls().check(profile, raw_requirements)
-            country = raw_requirements[0].country if raw_requirements else "unknown"
+            country = raw_requirements[0].country if raw_requirements else getattr(scraper_cls, "country", "unknown")
             results.append(UniversityResultOut(
                 university=result.university,
                 program=result.program,
@@ -258,7 +223,7 @@ def check_eligibility(
             results.append(UniversityResultOut(
                 university=getattr(checker_cls, "university", checker_cls.__name__),
                 program=getattr(checker_cls, "program", ""),
-                country="unknown",
+                country=getattr(scraper_cls, "country", "unknown"),
                 academic_year="unknown_year",
                 overall_status="needs_review",
                 judgments=[],
@@ -284,11 +249,14 @@ class SearchResultOut(BaseModel):
 def search(
     q: str = Query(..., min_length=1),
     top_k: int = Query(5, ge=1, le=20),
-    retrieve_k: int = Query(15, ge=1, le=50),
+    retrieve_k: int = Query(25, ge=1, le=50),
 ) -> list[SearchResultOut]:
     all_reqs = []
     for scraper_cls in SEARCH_SCRAPERS:
-        all_reqs.extend(scraper_cache.get_cached_or_fetch(scraper_cls))
+        try:
+            all_reqs.extend(scraper_cache.get_cached_or_fetch(scraper_cls))
+        except Exception:
+            all_reqs.extend(scraper_cls().run())
 
     candidates = hybrid_retrieve(q, top_k=retrieve_k, requirements=all_reqs)
     reranked = rerank(q, [c.requirement for c in candidates], top_k=top_k)
@@ -326,9 +294,6 @@ class AskResponse(BaseModel):
 
 @app.post("/ask", response_model=AskResponse)
 def ask_question(request: AskRequest):
-    """Retrieves context, runs the conflict engine, and synthesizes an answer using Groq."""
-    
-    # 1. Gather all requirements from cache (instant if warm)
     all_reqs = []
     for scraper_cls in ALL_SCRAPERS:
         try:
@@ -336,27 +301,24 @@ def ask_question(request: AskRequest):
         except Exception:
             pass
 
-    # 2. Retrieve top relevant facts for the user's question (expanded to 15 to prevent single-university tunnel vision)
     candidates = hybrid_retrieve(request.question, top_k=30, requirements=all_reqs)
     reranked = rerank(request.question, [c.requirement for c in candidates], top_k=15)
     retrieved_reqs = [r.record for r in reranked]
 
-    # 3. Check if any of these retrieved facts have known conflicts
     all_conflicts = detect_conflicts(all_reqs)
     relevant_conflicts = []
-    
+
     for conflict in all_conflicts:
         for req in retrieved_reqs:
             if req.university == conflict.university and req.requirement_type == conflict.requirement_type:
                 relevant_conflicts.append(conflict)
                 break
 
-    # 4. Construct the prompt with the Context and the Conflict Warnings
     context_str = "\n".join([
         f"- {r.university} ({r.program}): {r.requirement_type} = '{r.value}' (Source Tier {r.source_tier})"
         for r in retrieved_reqs
     ])
-    
+
     conflict_str = ""
     if relevant_conflicts:
         conflict_str = "⚠️ CRITICAL DATA CONFLICTS DETECTED (MUST WARN USER):\n"
@@ -380,30 +342,68 @@ INSTRUCTIONS:
 2. If there is a CRITICAL DATA CONFLICT listed above, you MUST explicitly warn the user in your response. State the false third-party claim, but emphasize that the Official Tier-1 source is the correct rule to follow.
 """
 
-    # 5. Generate the answer using Groq (Llama 3 8B)
     try:
         chat_completion = groq_client.chat.completions.create(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": request.question}
             ],
-            model="openai/gpt-oss-20b"
+            model="llama-3.3-70b-versatile"
         )
         answer_text = chat_completion.choices[0].message.content
     except Exception as e:
-        answer_text = f"Error communicating with LLM: {str(e)}. Please check your GROQ_API_KEY in the .env file."
+        # Fallback to smaller model if rate limited or model not found
+        try:
+            chat_completion = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": request.question}
+                ],
+                model="llama-3.1-8b-instant"
+            )
+            answer_text = chat_completion.choices[0].message.content
+        except Exception as e2:
+            answer_text = f"Error communicating with LLM: {str(e2)}. Please check your GROQ_API_KEY."
 
-    # 6. Extract unique source URLs to cite
     unique_sources = list({r.source_url for r in retrieved_reqs})
-    
     return AskResponse(answer=answer_text, sources=unique_sources)
+
+
+# --- COURSEWORK & ECTS AUDITOR ENDPOINT ---
+
+class CourseworkAuditRequest(BaseModel):
+    credits: Dict[str, float]
+    credit_system: str = "ECTS"
+
+
+@app.post("/audit/coursework")
+def audit_coursework_endpoint(request: CourseworkAuditRequest):
+    return audit_coursework(credits=request.credits, credit_system=request.credit_system)
+
+
+# --- DOCUMENT UPLOAD & EXTRACTION ENDPOINT ---
+
+@app.post("/profile/parse-document")
+async def parse_document_endpoint(file: UploadFile = File(...)):
+    contents = await file.read()
+    filename = (file.filename or "").lower()
+
+    if filename.endswith(".pdf"):
+        text = extract_text_from_pdf(contents)
+    else:
+        try:
+            text = contents.decode("utf-8", errors="ignore")
+        except Exception:
+            text = ""
+
+    parsed = parse_academic_document(text)
+    return parsed
 
 
 # --- CACHE ADMIN ENDPOINTS ---
 
 @app.get("/cache/status")
 def cache_status():
-    """Returns metadata about every cached scraper entry: freshness, TTL, record count."""
     return scraper_cache.get_cache_stats()
 
 
@@ -414,7 +414,6 @@ class CacheRefreshRequest(BaseModel):
 
 @app.post("/cache/refresh")
 def cache_refresh(request: CacheRefreshRequest = CacheRefreshRequest()):
-    """Manually trigger a cache refresh for all or a specific university."""
     refreshed = []
     for scraper_cls in ALL_SCRAPERS:
         if request.university and request.university.lower() not in scraper_cls.university.lower():
@@ -437,15 +436,14 @@ def cache_refresh(request: CacheRefreshRequest = CacheRefreshRequest()):
     return {"refreshed": refreshed}
 
 
-# --- STARTUP EVENT: Warm the cache so first user request is instant ---
+# --- STARTUP EVENT ---
 
 @app.on_event("startup")
 def on_startup():
-    """Pre-populate cache for all scrapers on server boot."""
     scraper_cache.warm_up(ALL_SCRAPERS)
 
 
-# --- STATIC ASSET SERVING (Enables unified single-port fullstack deployment) ---
+# --- STATIC ASSET SERVING ---
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 

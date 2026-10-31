@@ -1,0 +1,130 @@
+{
+  "timestamp": "2026-10-31 08:54:20 UTC",
+  "total_checked": 10,
+  "healthy_count": 3,
+  "drift_warnings": 7,
+  "results": [
+    {
+      "university": "TU Munich (TUM)",
+      "program": "Master's in Informatics",
+      "url": "https://www.in.tum.de/en/in/future-students/masters-programs/informatics/",
+      "status_code": 200,
+      "byte_length": 82936,
+      "is_healthy": false,
+      "matched_keywords": [
+        "application"
+      ],
+      "error": null
+    },
+    {
+      "university": "RWTH Aachen",
+      "program": "M.Sc. Computer Science",
+      "url": "https://sc.informatik.rwth-aachen.de/en/studium/master/informatik/start-ins-studium/",
+      "status_code": null,
+      "byte_length": 0,
+      "is_healthy": false,
+      "matched_keywords": [],
+      "error": "HTTPSConnectionPool(host='sc.informatik.rwth-aachen.de', port=443): Max retries exceeded with url: /en/studium/master/informatik/start-ins-studium/ (Caused by ConnectTimeoutError(<HTTPSConnection(host='sc.informatik.rwth-aachen.de', port=443) at 0x29baf4cd450>, 'Connection to sc.informatik.rwth-aachen.de timed out. (connect timeout=15)'))"
+    },
+    {
+      "university": "KAIST",
+      "program": "M.S. Artificial Intelligence (Graduate School of AI)",
+      "url": "https://admission.kaist.ac.kr/intl-graduate/Admission/Eligibility",
+      "status_code": 200,
+      "byte_length": 71837,
+      "is_healthy": true,
+      "matched_keywords": [
+        "admission",
+        "master",
+        "degree",
+        "application",
+        "requirements",
+        "study"
+      ],
+      "error": null
+    },
+    {
+      "university": "KAIST",
+      "program": "M.S. Computer Science (School of Computing)",
+      "url": "https://admission.kaist.ac.kr/intl-graduate/Admission/Eligibility",
+      "status_code": 200,
+      "byte_length": 71837,
+      "is_healthy": true,
+      "matched_keywords": [
+        "admission",
+        "master",
+        "degree",
+        "application",
+        "requirements",
+        "study"
+      ],
+      "error": null
+    },
+    {
+      "university": "TU Berlin",
+      "program": "M.Sc. Computer Science (Informatik)",
+      "url": "https://www.tu.berlin/studieren/studienangebot/studiengaenge/detail/computer-science-master-of-science",
+      "status_code": 404,
+      "byte_length": 0,
+      "is_healthy": false,
+      "matched_keywords": [],
+      "error": "Unexpected HTTP 404"
+    },
+    {
+      "university": "University of Stuttgart",
+      "program": "M.Sc. Computer Science",
+      "url": "https://www.uni-stuttgart.de/en/study/studienangebot/Computer-Science-M.Sc.-00002/",
+      "status_code": 404,
+      "byte_length": 0,
+      "is_healthy": false,
+      "matched_keywords": [],
+      "error": "Unexpected HTTP 404"
+    },
+    {
+      "university": "TU Darmstadt",
+      "program": "M.Sc. Computer Science (Informatik)",
+      "url": "https://www.tu-darmstadt.de/studium/studienangebot/studiengang_gesc_182994.en.jsp",
+      "status_code": 404,
+      "byte_length": 0,
+      "is_healthy": false,
+      "matched_keywords": [],
+      "error": "Unexpected HTTP 404"
+    },
+    {
+      "university": "TU Delft",
+      "program": "M.Sc. Computer Science",
+      "url": "https://www.tudelft.nl/en/education/programmes/masters/computer-science/msc-computer-science/admission-and-application",
+      "status_code": 403,
+      "byte_length": 0,
+      "is_healthy": false,
+      "matched_keywords": [],
+      "error": "HTTP 403 (Anti-bot / Cloudflare challenge; fallback cache active)"
+    },
+    {
+      "university": "ETH Zurich",
+      "program": "Master's in Computer Science",
+      "url": "https://ethz.ch/en/studies/master/degree-programmes/engineering-sciences/computer-science.html",
+      "status_code": 200,
+      "byte_length": 53801,
+      "is_healthy": true,
+      "matched_keywords": [
+        "admission",
+        "master",
+        "degree",
+        "application",
+        "study"
+      ],
+      "error": null
+    },
+    {
+      "university": "National University of Singapore (NUS)",
+      "program": "Master of Computing (General Track & CS Specialisations)",
+      "url": "https://www.comp.nus.edu.sg/programmes/graduate/mcomp/",
+      "status_code": 404,
+      "byte_length": 0,
+      "is_healthy": false,
+      "matched_keywords": [],
+      "error": "Unexpected HTTP 404"
+    }
+  ]
+}

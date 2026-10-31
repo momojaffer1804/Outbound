@@ -12,7 +12,7 @@ const API_URL = `${API_BASE_URL}/eligibility`
 const UNIVERSITIES_URL = `${API_BASE_URL}/universities`
 
 const MAX_COMPARE = 3
-const MAX_COUNTRIES = 2
+const MAX_COUNTRIES = 3
 const KNOWN_REQUIREMENTS = ['cgpa', 'english_test', 'gre', 'gate', 'german_test']
 
 function emptyProfile() {
@@ -42,8 +42,11 @@ function toRequestBody(profile, dynamicProfile) {
 function deriveCountry(universityName) {
   if (!universityName) return 'Unknown'
   const lower = universityName.toLowerCase()
-  if (lower.includes('tum') || lower.includes('munich') || lower.includes('rwth') || lower.includes('aachen')) return 'Germany'
+  if (lower.includes('tum') || lower.includes('munich') || lower.includes('rwth') || lower.includes('aachen') || lower.includes('berlin') || lower.includes('stuttgart') || lower.includes('darmstadt')) return 'Germany'
   if (lower.includes('kaist') || lower.includes('seoul')) return 'South Korea'
+  if (lower.includes('delft') || lower.includes('netherlands')) return 'Netherlands'
+  if (lower.includes('eth') || lower.includes('zurich') || lower.includes('switzerland')) return 'Switzerland'
+  if (lower.includes('nus') || lower.includes('singapore')) return 'Singapore'
   return 'Unknown'
 }
 
@@ -184,10 +187,227 @@ function getSourceInfo(url) {
   if (lower.includes('mygermanuniversity')) {
     return { name: 'MyGermanUniversity', type: 'Third-Party Portal', isOfficial: false }
   }
-  if (lower.includes('tum.de') || lower.includes('rwth-aachen.de') || lower.includes('kaist.ac.kr')) {
-    return { name: 'Official Website', type: 'Tier-1 Official Source', isOfficial: true }
+  if (lower.includes('tum.de') || lower.includes('rwth-aachen.de') || lower.includes('kaist.ac.kr') || lower.includes('tu.berlin') || lower.includes('uni-stuttgart.de') || lower.includes('tu-darmstadt.de') || lower.includes('tudelft.nl') || lower.includes('ethz.ch') || lower.includes('nus.edu.sg')) {
+    return { name: 'Official University Website', type: 'Tier-1 Official Source', isOfficial: true }
   }
   return { name: 'Official Website', type: 'Official Source', isOfficial: true }
+}
+
+function DocumentUploadWidget({ onProfileExtracted }) {
+  const [uploading, setUploading] = useState(false)
+  const [extractedNotice, setExtractedNotice] = useState(null)
+  const fileInputRef = useRef(null)
+
+  const handleFileUpload = async (file) => {
+    if (!file) return
+    setUploading(true)
+    setExtractedNotice(null)
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/profile/parse-document`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      onProfileExtracted(data)
+      const fields = data.detected_fields && data.detected_fields.length > 0 ? data.detected_fields.join(', ') : 'Profile parameters'
+      setExtractedNotice({ type: 'success', text: `Auto-populated from ${file.name}: ${fields}` })
+    } catch (err) {
+      setExtractedNotice({ type: 'error', text: `Failed to parse document: ${err.message}` })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="section-panel" style={{ background: 'var(--bg-surface-elevated)', border: '1px dashed var(--border-focus)', marginBottom: '1.5rem', textAlign: 'center', padding: '1.25rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{ fontSize: '1.25rem' }}>📄</div>
+        <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>Auto-Fill Profile with Transcript / Scorecard</div>
+        <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', maxWidth: '500px' }}>
+          Upload your unofficial academic transcript, GRE scorecard, or IELTS/TOEFL report (PDF) to auto-populate your eligibility form.
+        </p>
+        <input
+          type="file"
+          accept=".pdf,.txt"
+          ref={fileInputRef}
+          style={{ display: 'none' }}
+          onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])}
+        />
+        <button
+          type="button"
+          className="tab-btn"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '0.5rem 1.25rem', marginTop: '0.25rem' }}
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {uploading ? 'Parsing Document...' : 'Choose PDF File'}
+        </button>
+      </div>
+      {extractedNotice && (
+        <div style={{ marginTop: '0.85rem', padding: '0.6rem 1rem', borderRadius: '6px', fontSize: '0.85rem', background: extractedNotice.type === 'error' ? 'var(--status-unmet-bg)' : 'var(--status-met-bg)', color: extractedNotice.type === 'error' ? 'var(--status-unmet-text)' : 'var(--status-met-text)' }}>
+          {extractedNotice.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CourseworkAuditorView() {
+  const [credits, setCredits] = useState({
+    theoretical_cs: 24,
+    practical_cs: 35,
+    technical_cs: 20,
+    mathematics: 28,
+  })
+  const [creditSystem, setCreditSystem] = useState('ECTS')
+  const [auditResult, setAuditResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const runAudit = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE_URL}/audit/coursework`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credits, credit_system: creditSystem }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setAuditResult(data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    runAudit()
+  }, [credits, creditSystem])
+
+  const setCreditVal = (key, val) => {
+    setCredits(prev => ({ ...prev, [key]: Number(val) || 0 }))
+  }
+
+  return (
+    <div className="coursework-auditor">
+      <div className="section-panel" style={{ marginBottom: '1.5rem' }}>
+        <div className="section-title">ECTS Credit Gap & Curricular Overlap Auditor</div>
+        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+          Evaluate your undergraduate coursework coverage against standard European Computer Science clusters to test university-specific deficit limits (e.g. RWTH Aachen's 42 CP ceiling, TU Berlin's subject minimums, TU Darmstadt's 30 CP deficit rule).
+        </p>
+
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label className="field">
+            Undergraduate Credit Scale:
+            <select value={creditSystem} onChange={(e) => setCreditSystem(e.target.value)}>
+              <option value="ECTS">European ECTS Credits (1 credit = 1 ECTS)</option>
+              <option value="INDIAN_CREDIT">Indian University Credits (approx. 1 credit = 1.5 ECTS)</option>
+              <option value="US_SEMESTER">US Semester Credit Hours (approx. 1 credit = 1.8 ECTS)</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="field-grid">
+          <label className="field">
+            Theoretical CS (Formal Lang, Automata, Logic)
+            <input type="number" step="0.5" value={credits.theoretical_cs} onChange={(e) => setCreditVal('theoretical_cs', e.target.value)} />
+          </label>
+          <label className="field">
+            Practical CS (OOP, DSA, Databases, SE, ML)
+            <input type="number" step="0.5" value={credits.practical_cs} onChange={(e) => setCreditVal('practical_cs', e.target.value)} />
+          </label>
+          <label className="field">
+            Systems & Tech CS (OS, Arch, Networks, Security)
+            <input type="number" step="0.5" value={credits.technical_cs} onChange={(e) => setCreditVal('technical_cs', e.target.value)} />
+          </label>
+          <label className="field">
+            Higher Mathematics (Calculus, Linear Alg, Stats)
+            <input type="number" step="0.5" value={credits.mathematics} onChange={(e) => setCreditVal('mathematics', e.target.value)} />
+          </label>
+        </div>
+      </div>
+
+      {auditResult && (
+        <>
+          {/* Institutional Verdicts */}
+          <div className="section-panel" style={{ marginBottom: '1.5rem' }}>
+            <div className="section-title">Institutional Eligibility Verdicts</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+              
+              <div style={{ background: 'var(--bg-base)', padding: '1.25rem', borderRadius: '8px', border: `1px solid ${auditResult.rwth_eligible ? 'var(--status-met-border)' : 'var(--status-unmet-border)'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong>RWTH Aachen</strong>
+                  <span className={`status-pill ${auditResult.rwth_eligible ? 'met' : 'not_met'}`}>{auditResult.rwth_eligible ? 'PASS' : 'FAIL'}</span>
+                </div>
+                <p style={{ fontSize: '0.825rem', marginTop: '0.5rem', color: 'var(--text-main)' }}>{auditResult.rwth_verdict}</p>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>Threshold: Max 42 CP deficit allowed.</div>
+              </div>
+
+              <div style={{ background: 'var(--bg-base)', padding: '1.25rem', borderRadius: '8px', border: `1px solid ${auditResult.tu_berlin_eligible ? 'var(--status-met-border)' : 'var(--status-unmet-border)'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong>TU Berlin</strong>
+                  <span className={`status-pill ${auditResult.tu_berlin_eligible ? 'met' : 'not_met'}`}>{auditResult.tu_berlin_eligible ? 'PASS' : 'FAIL'}</span>
+                </div>
+                <p style={{ fontSize: '0.825rem', marginTop: '0.5rem', color: 'var(--text-main)' }}>{auditResult.tu_berlin_verdict}</p>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>Threshold: $\ge$12 Theory, $\ge$12 Systems, $\ge$18 Math.</div>
+              </div>
+
+              <div style={{ background: 'var(--bg-base)', padding: '1.25rem', borderRadius: '8px', border: `1px solid ${auditResult.tu_darmstadt_eligible ? 'var(--status-met-border)' : 'var(--status-unmet-border)'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong>TU Darmstadt</strong>
+                  <span className={`status-pill ${auditResult.tu_darmstadt_eligible ? 'met' : 'not_met'}`}>{auditResult.tu_darmstadt_eligible ? 'PASS' : 'FAIL'}</span>
+                </div>
+                <p style={{ fontSize: '0.825rem', marginTop: '0.5rem', color: 'var(--text-main)' }}>{auditResult.tu_darmstadt_verdict}</p>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>Threshold: Max 30 CP entrance deficit.</div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Breakdown Table */}
+          <div className="section-panel" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="comparison-table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>Subject Competency Cluster</th>
+                  <th>Required (ECTS)</th>
+                  <th>Completed (ECTS)</th>
+                  <th>Gap / Deficit</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditResult.category_breakdown.map((cat, i) => (
+                  <tr key={i}>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{cat.label}</div>
+                      <div style={{ fontSize: '0.775rem', color: 'var(--text-muted)' }}>{cat.description}</div>
+                    </td>
+                    <td>{cat.required_ects} ECTS</td>
+                    <td><strong style={{ color: 'var(--accent)' }}>{cat.completed_ects} ECTS</strong></td>
+                    <td>{cat.gap_ects > 0 ? <span style={{ color: 'var(--status-unmet-text)', fontWeight: 600 }}>-{cat.gap_ects} ECTS</span> : <span style={{ color: 'var(--status-met-text)' }}>0 ECTS</span>}</td>
+                    <td><StatusPill status={cat.is_satisfied ? 'met' : 'not_met'} /></td>
+                  </tr>
+                ))}
+                <tr style={{ background: 'var(--bg-surface-elevated)', fontWeight: 700 }}>
+                  <td>TOTAL OVERALL</td>
+                  <td>{auditResult.total_required_ects} ECTS</td>
+                  <td>{auditResult.total_completed_ects} ECTS</td>
+                  <td style={{ color: auditResult.total_gap_ects > 0 ? 'var(--status-unmet-text)' : 'var(--status-met-text)' }}>-{auditResult.total_gap_ects} ECTS</td>
+                  <td><StatusPill status={auditResult.rwth_eligible ? 'met' : 'not_met'} /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 function RagChatView() {
@@ -341,7 +561,6 @@ function CacheMonitorView() {
 
   return (
     <div className="cache-monitor">
-      {/* Top Overview Cards */}
       <div className="section-panel" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
           <div>
@@ -372,7 +591,6 @@ function CacheMonitorView() {
           </div>
         </div>
 
-        {/* Stats Metrics Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
           <div style={{ background: 'var(--bg-base)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cached Scrapers</div>
@@ -395,7 +613,6 @@ function CacheMonitorView() {
         </div>
       </div>
 
-      {/* Speed Benchmark Widget */}
       <div className="section-panel" style={{ marginBottom: '1.5rem', background: 'var(--accent-light)', borderColor: '#c3dacd' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -450,7 +667,6 @@ function CacheMonitorView() {
         </div>
       )}
 
-      {/* Scraper Cache Entries Table */}
       <div className="section-panel" style={{ padding: 0, overflow: 'hidden' }}>
         <table className="comparison-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -515,7 +731,7 @@ function CacheMonitorView() {
 }
 
 export default function App() {
-  const [appMode, setAppMode] = useState('check') // 'check' | 'compare' | 'chat'
+  const [appMode, setAppMode] = useState('check') // 'check' | 'compare' | 'auditor' | 'chat' | 'cache'
   const [profile, setProfile] = useState(emptyProfile())
   const [dynamicProfile, setDynamicProfile] = useState({})
   const [results, setResults] = useState(null)
@@ -571,6 +787,24 @@ export default function App() {
   const set = (key) => (e) => setProfile((p) => ({ ...p, [key]: e && e.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }))
   const setDynamic = (key) => (e) => setDynamicProfile((p) => ({ ...p, [key]: e.target.value }))
 
+  const handleDocumentExtracted = (extracted) => {
+    setProfile(prev => ({
+      ...prev,
+      flow: 'near_term',
+      cgpa: extracted.cgpa !== null && extracted.cgpa !== undefined ? extracted.cgpa : prev.cgpa,
+      gre_quant_scaled: extracted.gre_quant_scaled || prev.gre_quant_scaled,
+      gre_quant_percentile: extracted.gre_quant_percentile || prev.gre_quant_percentile,
+      gre_verbal_percentile: extracted.gre_verbal_percentile || prev.gre_verbal_percentile,
+      gre_awa: extracted.gre_awa || prev.gre_awa,
+      english_test_type: extracted.english_test_type || prev.english_test_type,
+      english_score: extracted.english_score || prev.english_score,
+      citizenship: extracted.citizenship || prev.citizenship,
+      undergrad_country: extracted.undergrad_country || prev.undergrad_country,
+      gate_score_reported: extracted.gate_score_reported !== undefined ? extracted.gate_score_reported : prev.gate_score_reported,
+      undergrad_institution_english_medium: extracted.undergrad_institution_english_medium !== null ? extracted.undergrad_institution_english_medium : prev.undergrad_institution_english_medium,
+    }))
+  }
+
   const filteredUniversities = availableUniversities.filter((u) => countryMode === 'all' || selectedCountries.includes(u.country || deriveCountry(u.university)))
   const isNearTerm = profile.flow === 'near_term'
   const isGermanyInScope = appMode === 'check' 
@@ -603,12 +837,15 @@ export default function App() {
       <div className="app-mode-tabs">
         <button type="button" className={`tab-btn ${appMode === 'check' ? 'active' : ''}`} onClick={() => { setAppMode('check'); setResults(null); setError(null) }}>Eligibility Engine</button>
         <button type="button" className={`tab-btn ${appMode === 'compare' ? 'active' : ''}`} onClick={() => { setAppMode('compare'); setResults(null); setError(null); setSelectedUniversities(prev => prev.slice(0, MAX_COMPARE)) }}>Compare Programs</button>
+        <button type="button" className={`tab-btn ${appMode === 'auditor' ? 'active' : ''}`} onClick={() => { setAppMode('auditor'); setResults(null); setError(null) }}>ECTS Credit Auditor</button>
         <button type="button" className={`tab-btn ${appMode === 'chat' ? 'active' : ''}`} onClick={() => { setAppMode('chat'); setResults(null); setError(null) }}>Grounding Assistant</button>
         <button type="button" className={`tab-btn ${appMode === 'cache' ? 'active' : ''}`} onClick={() => { setAppMode('cache'); setResults(null); setError(null) }}>⚡ Cache Monitor</button>
       </div>
 
       {(appMode === 'check' || appMode === 'compare') && (
         <>
+          <DocumentUploadWidget onProfileExtracted={handleDocumentExtracted} />
+
           <form onSubmit={handleSubmit}>
             <div className="section-panel">
               <div className="section-title">Application Timeline</div>
@@ -646,11 +883,11 @@ export default function App() {
                 <div className="section-title">Target Countries & Programs</div>
                 <div className="radio-group row" style={{ marginBottom: '1.5rem' }}>
                   <label className="checkable"><input type="radio" checked={countryMode === 'all'} onChange={() => { setCountryMode('all'); setSelectedCountries([]) }} /> Anywhere</label>
-                  <label className="checkable"><input type="radio" checked={countryMode === 'specific'} onChange={() => setCountryMode('specific')} /> Specific countries</label>
+                  <label className="checkable"><input type="radio" checked={countryMode === 'specific'} onChange={() => setCountryMode('specific')} /> Specific countries (up to {MAX_COUNTRIES})</label>
                 </div>
 
                 {countryMode === 'specific' && (
-                  <div className="checkbox-list" style={{ marginBottom: '2rem', display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+                  <div className="checkbox-list" style={{ marginBottom: '2rem', display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '1rem' }}>
                     {availableCountries.map((c) => {
                       const isSelected = selectedCountries.includes(c)
                       const disabled = !isSelected && selectedCountries.length >= MAX_COUNTRIES
@@ -671,7 +908,7 @@ export default function App() {
                     {programMode === 'specific' && (
                       <div className="checkbox-list">
                         {filteredUniversities.map((u) => (
-                          <label key={`${u.university}-${u.program}`} className="checkable"><input type="checkbox" checked={selectedUniversities.includes(u.university)} onChange={() => toggleUniversity(u.university)} /> {u.university} — {u.program}</label>
+                          <label key={`${u.university}-${u.program}`} className="checkable"><input type="checkbox" checked={selectedUniversities.includes(u.university)} onChange={() => toggleUniversity(u.university)} /> {u.university} — {u.program} <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({u.country})</span></label>
                         ))}
                       </div>
                     )}
@@ -688,7 +925,7 @@ export default function App() {
                     const isSelected = selectedUniversities.includes(u.university)
                     const disabled = !isSelected && selectedUniversities.length >= MAX_COMPARE
                     return (
-                      <label key={`${u.university}-${u.program}`} className="checkable" style={{ opacity: disabled ? 0.4 : 1 }}><input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleUniversity(u.university)} /> {u.university} — {u.program}</label>
+                      <label key={`${u.university}-${u.program}`} className="checkable" style={{ opacity: disabled ? 0.4 : 1 }}><input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleUniversity(u.university)} /> {u.university} — {u.program} <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({u.country})</span></label>
                     )
                   })}
                 </div>
@@ -716,7 +953,7 @@ export default function App() {
                         <label className="field">GRE AWA<input type="number" step="0.5" value={profile.gre_awa} onChange={set('gre_awa')} /></label>
                       </>
                     )}
-                    {backendRequiredFields.has('gate') && <label className="checkable" style={{ gridColumn: '1 / -1', marginTop: '1rem' }}><input type="checkbox" checked={profile.gate_score_reported} onChange={set('gate_score_reported')} /> I have a GATE score</label>}
+                    {backendRequiredFields.has('gate') && <label className="checkable" style={{ gridColumn: '1 / -1', marginTop: '1rem' }}><input type="checkbox" checked={profile.gate_score_reported} onChange={set('gate_score_reported')} /> I have a GATE CS score</label>}
                   </div>
                 )}
 
@@ -746,6 +983,7 @@ export default function App() {
         </>
       )}
 
+      {appMode === 'auditor' && <CourseworkAuditorView />}
       {appMode === 'chat' && <RagChatView />}
       {appMode === 'cache' && <CacheMonitorView />}
     </div>
