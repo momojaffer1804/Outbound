@@ -301,9 +301,9 @@ def ask_question(request: AskRequest):
         except Exception:
             pass
 
-    candidates = hybrid_retrieve(request.question, top_k=12, requirements=all_reqs)
-    reranked = rerank(request.question, [c.requirement for c in candidates], top_k=8)
-    retrieved_reqs = [r.record for r in reranked]
+    use_emb = os.getenv("ENABLE_NEURAL_RETRIEVAL", "false").lower() == "true"
+    candidates = hybrid_retrieve(request.question, top_k=8, requirements=all_reqs, use_embeddings=use_emb)
+    retrieved_reqs = [c.requirement for c in candidates]
 
     all_conflicts = detect_conflicts(all_reqs)
     relevant_conflicts = []
