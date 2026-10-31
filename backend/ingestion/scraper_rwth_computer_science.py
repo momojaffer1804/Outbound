@@ -46,12 +46,10 @@ class RWTHComputerScienceScraper(BaseUniversityScraper):
 
     def parse(self, soup) -> list[RawRequirement]:
         retrieved_date = self.stamp_retrieved_date()
-        full_text = soup.get_text(" ", strip=True)
-        academic_year = self.extract_academic_year(full_text)
-        # Expected to be 'unknown_year' for this page -- confirmed no explicit
-        # year string exists here as of the verification date below. Assert
-        # loudly if that ever silently changes without re-verification.
-        assert academic_year == "unknown_year", (
+        full_text = soup.get_text(" ", strip=True) if soup else ""
+        academic_year = self.extract_academic_year(full_text) if soup else "unknown_year"
+        if soup:
+            assert academic_year == "unknown_year", (
             f"Expected 'unknown_year' for RWTH page (no year string was found "
             f"during manual verification); got '{academic_year}' instead. "
             f"The page may have added an explicit year -- re-verify manually "

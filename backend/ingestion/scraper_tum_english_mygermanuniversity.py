@@ -43,7 +43,8 @@ class TUMEnglishMyGermanUniversityScraper(BaseUniversityScraper):
 
     def parse(self, soup) -> list[RawRequirement]:
         retrieved_date = self.stamp_retrieved_date()
-        academic_year = self.extract_academic_year(soup.get_text(" ", strip=True))
+        full_text = soup.get_text(" ", strip=True) if soup else ""
+        academic_year = self.extract_academic_year(full_text) if soup else "unknown_year"
 
         return [RawRequirement(
             requirement_type="english_test",

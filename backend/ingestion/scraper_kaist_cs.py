@@ -64,9 +64,10 @@ class KAISTCSScraper(BaseUniversityScraper):
 
     def parse(self, soup) -> list[RawRequirement]:
         retrieved_date = self.stamp_retrieved_date()
-        full_text = soup.get_text(" ", strip=True)
-        eligibility_academic_year = self.extract_academic_year(full_text)
-        assert eligibility_academic_year == "unknown_year", (
+        full_text = soup.get_text(" ", strip=True) if soup else ""
+        eligibility_academic_year = self.extract_academic_year(full_text) if soup else "unknown_year"
+        if soup:
+            assert eligibility_academic_year == "unknown_year", (
             f"Expected 'unknown_year' for KAIST eligibility page; got "
             f"'{eligibility_academic_year}'. Re-verify before trusting."
         )

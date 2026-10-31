@@ -348,7 +348,7 @@ INSTRUCTIONS:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": request.question}
             ],
-            model="llama-3.3-70b-versatile"
+            model="openai/gpt-oss-120b"
         )
         answer_text = chat_completion.choices[0].message.content
     except Exception as e:
@@ -359,7 +359,7 @@ INSTRUCTIONS:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": request.question}
                 ],
-                model="llama-3.1-8b-instant"
+                model="openai/gpt-oss-20b"
             )
             answer_text = chat_completion.choices[0].message.content
         except Exception as e2:

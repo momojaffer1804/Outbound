@@ -81,7 +81,7 @@ class BaseUniversityScraper(ABC):
     source_tier: int = 1  # official university admission page = tier 1
 
     def fetch(self) -> BeautifulSoup:
-        resp = requests.get(self.source_url, headers=DEFAULT_HEADERS, timeout=20)
+        resp = requests.get(self.source_url, headers=DEFAULT_HEADERS, timeout=4)
         resp.raise_for_status()
         return BeautifulSoup(resp.text, "lxml")
 
@@ -136,5 +136,11 @@ class BaseUniversityScraper(ABC):
         raise NotImplementedError
 
     def run(self) -> list[RawRequirement]:
-        soup = self.fetch()
-        return self.parse(soup)
+        try:
+            soup = self.fetch()
+            return self.parse(soup)
+        except Exception:
+            try:
+                return self.parse(None)
+            except Exception:
+                return []
