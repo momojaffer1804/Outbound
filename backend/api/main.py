@@ -443,3 +443,32 @@ def cache_refresh(request: CacheRefreshRequest = CacheRefreshRequest()):
 def on_startup():
     """Pre-populate cache for all scrapers on server boot."""
     scraper_cache.warm_up(ALL_SCRAPERS)
+
+
+# --- STATIC ASSET SERVING (Enables unified single-port fullstack deployment) ---
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+possible_dist_dirs = [
+    BACKEND_ROOT.parent / "frontend" / "dist",
+    BACKEND_ROOT / "frontend" / "dist",
+    BACKEND_ROOT / "dist",
+    Path("/app/frontend/dist"),
+    Path("/app/dist"),
+]
+frontend_dist = next((d for d in possible_dist_dirs if (d / "index.html").exists()), None)
+
+if frontend_dist:
+    if (frontend_dist / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+
+    @app.get("/")
+    def serve_root():
+        return FileResponse(frontend_dist / "index.html")
+
+    @app.get("/{full_path:path}")
+    def serve_frontend_catchall(full_path: str):
+        target = frontend_dist / full_path
+        if target.exists() and target.is_file():
+            return FileResponse(target)
+        return FileResponse(frontend_dist / "index.html")
