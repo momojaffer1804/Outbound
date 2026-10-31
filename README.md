@@ -13,101 +13,100 @@ Outbound automates this evaluation while preserving strict source provenance, cr
 
 ---
 
-### Architecture & System Design
-- **Backend:** FastAPI modular service decoupling ingestion, eligibility evaluation, hybrid retrieval, cross-encoder reranking, conflict resolution, and persistent caching.
-- **Frontend:** React 19 + Vite responsive SPA featuring four dedicated viewports:
-  - *Eligibility Engine:* Progressive disclosure form supporting early-stage planners and near-term applicants with granular requirement status pills (`MET`, `UNMET`, `REVIEW`, `N/A`, `INFO`).
-  - *Program Comparison:* Side-by-side evaluation matrix benchmarking up to 3 programs simultaneously across all extracted requirements.
-  - *Grounding Assistant:* Source-grounded RAG chatbot powered by Groq, rendering markdown answers, conflict alert banners, and source tier badges.
-  - *Cache Monitor:* Live administrative dashboard with real-time TTL metrics, stale-while-revalidate status indicators, and an interactive roundtrip latency benchmark.
+### System Architecture
+- **Backend:** FastAPI service with decoupled modules for data ingestion, eligibility evaluation, hybrid retrieval, cross-encoder reranking, conflict resolution, and persistent caching.
+- **Frontend:** React 19 + Vite responsive single-page application featuring four interactive viewports:
+  - **Eligibility Engine:** Progressive disclosure profile form supporting early-stage planners (CGPA-only) and near-term applicants with granular requirement status judgments (`MET`, `UNMET`, `REVIEW`, `N/A`, `INFO`).
+  - **Program Comparison:** Side-by-side evaluation matrix benchmarking up to 3 programs simultaneously across all extracted requirements.
+  - **Grounding Assistant:** Source-grounded RAG chatbot powered by Groq, rendering formatted markdown responses, conflict alert warnings, and verified source citations.
+  - **Cache Monitor:** Live administrative dashboard with real-time TTL metrics, stale-while-revalidate status indicators, force-refresh controls, and an interactive roundtrip latency benchmark.
 - **Two-Stage Retrieval Pipeline:**
   1. *First-Stage Hybrid Retrieval:* Lexical search (`rank-bm25`) combined with dense semantic embeddings (`sentence-transformers/all-MiniLM-L6-v2`), fused via Reciprocal Rank Fusion (RRF, $k=60$).
   2. *Second-Stage Reranking:* Query-candidate re-scoring using a cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`) to optimize passage ordering.
-- **Conflict Detection Engine:** Asymmetric, authority-weighted discrepancy analyzer ensuring Tier-1 official university portals always supersede Tier-4/5 aggregators.
+- **Conflict Detection Engine:** Asymmetric, authority-weighted discrepancy analyzer ensuring Tier-1 official university portals always supersede Tier-4/5 commercial aggregators.
 - **Persistent Caching Layer:** Thread-safe SQLite cache (`backend/data/cache.db`) with 24-hour TTL, server startup warm-up, and *stale-while-revalidate* fallback on network degradation.
 
 ---
 
-### Implementation Progress
+### Current System Capabilities
 
-#### Phase 0 — Environment & Baseline Setup
-- **Status:** Complete.
-- Repository structure established with modular backend architecture, React frontend skeleton, and local virtual environments.
+#### Multi-University Knowledge Base
+- **Technical University of Munich (TUM) — M.Sc. Informatics (Germany):** Evaluates scaled GRE thresholds ($\ge$ 164 Quant, $\ge$ 4.0 AWA) with Indian GATE CS alternatives, mandatory APS certification (India, China, Vietnam), CEFR-aligned language requirements, tuition fees (€6,000/semester for non-EU students), and curricular assessment prerequisites.
+- **RWTH Aachen University — M.Sc. Computer Science (Germany):** Evaluates prior coursework credit overlap (maximum 42 CP bridgeable gap), German C1 proficiency requirements, GRE percentiles (Quant > 75th percentile), and €0 tuition confirmation.
+- **KAIST — M.S. Artificial Intelligence & M.S. Computer Science (South Korea):** Evaluates non-Korean citizenship eligibility gates, English test cutoffs (accounting for the post-21 Jan 2026 TOEFL scale revision), English-medium bachelor waivers, and full international tuition scholarship coverage.
+- **Secondary Aggregator Grounding:** Ingests third-party portal records (Yocket, MyGermanUniversity) specifically to benchmark and detect secondary-source inaccuracies against official baselines.
 
-#### Phase 1 — Data Ingestion & Scrapers
-- **Status:** Completed for initial multi-country benchmark set (3 universities across 4 degree tracks + 2 secondary aggregators).
-- **Tier-1 Official University Scrapers:**
-  - **Technical University of Munich (TUM):** *M.Sc. Informatics* — Dual-source extraction (curriculum page + central language portal) covering GPA, GRE/GATE, APS certification, deadlines, ECTS basis, and tuition fees (€6,000/semester for non-EU students).
-  - **RWTH Aachen University:** *M.Sc. Computer Science* — Departmental scraper extracting prior coursework criteria (42 CP maximum bridge gap), German C1 mandate, GRE percentiles (Quant > 75th percentile), and €0 tuition confirmation.
-  - **KAIST (Graduate School of AI):** *M.S. Artificial Intelligence* — Multi-level portal ingestion capturing foreign citizenship gates, English score cutoffs (including the post-21 Jan 2026 TOEFL scale revision), English-medium bachelor waivers, and full international tuition scholarships.
-  - **KAIST (School of Computing):** *M.S. Computer Science* — Shared institutional eligibility alignment with computing department schedule parameters.
-- **Tier-4 Aggregator Scrapers (Conflict Benchmarking):**
-  - **MyGermanUniversity:** TUM Informatics admissions profile.
-  - **Yocket:** TUM Informatics admissions overview.
+#### Verified Retrieval Performance
+Evaluated across a benchmark dataset of 32 hand-labeled admissions queries spanning GPA, language minimums, GRE/GATE cutoffs, deadlines, tuition, and prerequisite credits:
+- **BM25 only:** Recall@5: 78.1% | MRR: 0.6306
+- **Dense only (`all-MiniLM-L6-v2`):** Recall@5: 93.8% | MRR: 0.7966
+- **BM25 + Dense (RRF, $k=60$):** Recall@5: 87.5% | MRR: 0.7724
+- **RRF + Cross-Encoder Reranker (`ms-marco-MiniLM-L-6-v2`):** Recall@5: 87.5% | **MRR: 0.8700** (guarantees the authoritative ground-truth passage ranks at the top).
 
-#### Phase 2 — Rule-Based Eligibility Checkers
-- **Status:** Complete for all active programs.
-- Implemented deterministic per-university checkers:
-  - `checker_tum.py`: Enforces scaled GRE minimums (Quant $\ge$ 164, AWA $\ge$ 4.0) or Indian GATE CS alternatives, mandatory APS documentation for India/China/Vietnam, and conservative `needs_review` statuses for aptitude assessments.
-  - `checker_rwth.py`: Validates GRE percentile scores, German C1 proficiency, and evaluates exemptions for EU/EEA and Bildungsinländer applicants.
-  - `checker_kaist_ai.py` & `checker_kaist_cs.py`: Evaluates citizenship eligibility, English test cutoffs across TOEFL/IELTS/TOEIC/TEPS, and conditional undergraduate institution waivers.
+#### Authority-Weighted Conflict Detection
+- Cross-references incoming facts against official baselines with 100% precision on benchmarked aggregator claims.
+- Catches real-world errors such as commercial portals reporting GRE as universally mandatory when official policies restrict it to specific nationalities, or portals publishing rigid cutoffs where official universities accept CEFR-equivalent certification paths.
+- Automatically injects warning banners into the RAG generation prompt to prevent the LLM from hallucinating outdated aggregator claims.
 
-#### Phase 3 — Hybrid Retrieval & Reranker
-- **Status:** Complete and evaluated.
-- Integrated `/search` endpoint combining BM25 keyword matching with dense MiniLM vector similarity via Reciprocal Rank Fusion, followed by cross-encoder re-scoring.
-- **Benchmark Ablation Results (32 hand-labeled queries across 4 programs):**
-  - *BM25 only:* Recall@5: 78.1% | MRR: 0.6306
-  - *Dense only (`all-MiniLM-L6-v2`):* Recall@5: 93.8% | MRR: 0.7966
-  - *BM25 + Dense (RRF, $k=60$):* Recall@5: 87.5% | MRR: 0.7724
-  - *RRF + Cross-Encoder Reranker:* Recall@5: 87.5% | **MRR: 0.8700** (ensures authoritative passage placement at Rank 1).
-
-#### Phase 4 — Conflict Resolution & Grounded RAG Assistant
-- **Status:** Complete.
-- Detects discrepancies between Tier-1 official baselines and Tier-4 commercial aggregators with 100% precision on benchmarked records:
-  - *GRE Scope Discrepancy:* Yocket marks GRE as unconditionally required; official TUM Tier-1 requirements mandate GRE only for applicants from 5 countries and accept GATE CS for Indian applicants.
-  - *Language Cutoff Oversimplification:* Aggregators claim rigid minimums; official portals delegate language compliance to multi-track CEFR certification frameworks.
-- The `/ask` endpoint runs retrieval, detects conflicts, and injects critical conflict warnings into the LLM context to prevent admissions hallucinations.
-
-#### Phase 5 — Performance Optimization & Persistent Caching
-- **Status:** Complete.
-- Persistent SQLite cache reduces live network scrape roundtrips from **~4.71 seconds** down to a **0.88 ms median hit** (0.95 ms mean over 100 benchmarked requests), delivering a >99.9% latency reduction.
-
-#### Phase 6 — Containerization & Deployment
-- **Status:** Complete.
-- Multi-stage `Dockerfile` configurations for backend and frontend.
-- Production `nginx.conf` with built-in API reverse proxy and SPA routing.
-- Unified single-server fallback in FastAPI to serve production static builds directly.
-- Orchestrated with `docker-compose.yml`, `.env` configuration, and one-click deployment scripts (`deploy.bat` / `deploy.sh`).
+#### High-Performance SQLite Cache Layer
+- Eliminates live network scrape bottlenecks by caching parsed requirements in a local SQLite database with a 24-hour TTL.
+- Tested over 100 benchmarked requests: reduces live scrape durations from **~4.71 seconds** down to a **0.88 ms median latency** (0.95 ms mean), delivering a >99.9% latency reduction.
+- Implements *stale-while-revalidate*: if an upstream university portal is temporarily unreachable or blocks scrapers, the system safely falls back to the cached snapshot rather than crashing.
 
 ---
 
-### Key Challenges & Resolved Failure Modes
-- **Unreliable HTML Layouts:** University admissions pages frequently alter DOM trees and CMS structures. Solved by creating isolated, per-university scrapers with fallback to hand-verified official records.
-- **Misleading Academic Year Extraction:** University pages frequently cite historic fee policy years or old regulation dates. Resolved by anchoring regex year searches specifically within admissions-related proximity windows.
-- **Aggregator Hallucinations:** Secondary aggregators omit critical conditional exemptions (e.g. GRE country lists or English-medium waivers). Solved via asymmetric conflict rules where Tier-1 always takes precedence.
-- **Model Download Cold Starts:** Pre-cached SentenceTransformer and CrossEncoder model checkpoints during Docker image build time to eliminate boot delays and rate-limiting.
+### Key Engineering Challenges & Solutions
+- **Fragile University HTML Structures:** University admissions pages frequently alter layouts and CMS selectors. Resolved by developing modular, isolated scrapers per institution with fallback to hand-verified official records.
+- **Ambiguous Academic Year Extraction:** University pages often mention historic fee policy years or regulation dates. Fixed by anchoring regex extraction strictly within admissions-context keyword windows.
+- **Aggregator Hallucinations in RAG:** Aggregators often omit crucial eligibility nuances (e.g., country exemptions or degree waiver conditions). Resolved by enforcing strict source-hierarchy weighting where Tier-1 official facts supersede secondary claims.
+- **Zero-Latency Container Startup:** Pre-cached SentenceTransformer and CrossEncoder model weights during Docker build time to eliminate cold-start download delays and Hugging Face API rate limits in production.
 
 ---
 
-### Deployment
+### Deployment & Running Outbound
 
-#### Using Docker Compose
+#### 1. Docker Compose (Recommended)
 ```bash
 docker compose up --build -d
 ```
-- **Frontend:** [http://localhost:3000](http://localhost:3000)
+- **Frontend UI:** [http://localhost:3000](http://localhost:3000)
 - **Backend API:** [http://localhost:8000](http://localhost:8000)
-- **Interactive Swagger Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Interactive API Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Health Check Endpoint:** [http://localhost:8000/health](http://localhost:8000/health)
 
-#### Automated Script
-- **Windows:** Run `deploy.bat`
+#### 2. Automated Run Scripts
+- **Windows:** Double-click or run `deploy.bat`
 - **Linux / macOS:** Run `./deploy.sh`
+
+#### 3. Standalone Fullstack Production Run
+The FastAPI backend includes static file serving to run the entire application on a single port:
+```bash
+# 1. Build frontend assets
+cd frontend
+npm install
+npm run build
+cd ..
+
+# 2. Run unified server
+export PYTHONPATH=backend
+python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
+#### Environment Variables (`.env`)
+Create a `.env` file in the root directory:
+```env
+# Required for RAG Grounding Assistant (/ask endpoint)
+GROQ_API_KEY=your_groq_api_key_here
+
+# Optional: set only if frontend and backend are hosted on separate domains
+VITE_API_URL=
+```
 
 ---
 
-### Future Plan & Roadmap
-- **Expand University Coverage:** Scale coverage from the initial 3 institutions to 10+ major technical universities across Germany (TU Berlin, TU Darmstadt, Stuttgart, Karlsruhe), the Netherlands (TU Delft), and Switzerland (ETH Zurich).
-- **Automated Curricular Overlap & ECTS Auditing:** Implement transcript-level syllabus parsing to evaluate course prerequisites automatically against credit requirements (e.g. RWTH's 42 CP coursework gap rule).
-- **Automated Scraper Drift Detection:** Implement cron-based monitoring to detect when university portal HTML structures change, notifying maintainers before ingestion breaks.
-- **RAG Factuality & Citation Verification Harness:** Build an automated evaluation suite testing generated LLM answers against authoritative records to continuously benchmark hallucination rates under varied prompt strategies.
-- **User Document Upload & Profile Parsing:** Allow users to upload unofficial transcripts, CVs, and score sheets (APS, IELTS, GRE) to auto-populate their eligibility profile.
+### Future Roadmap
+- **Broader Institutional Coverage:** Expand the program catalog from Germany and South Korea to additional top institutions across Europe (ETH Zurich, TU Delft, TU Berlin, Stuttgart) and Asia.
+- **Automated Curricular Overlap & ECTS Auditing:** Implement transcript syllabus parsing to evaluate course prerequisites automatically against university-specific credit criteria.
+- **Scraper Drift Monitoring:** Add recurring cron monitoring to detect university portal DOM mutations and alert before data pipelines break.
+- **Automated RAG Factuality Evaluation:** Implement continuous synthetic test suites to benchmark answer hallucination rates and citation accuracy across LLM versions.
+- **Document & Transcript Parsing:** Enable applicants to upload unofficial transcripts and standardized test scorecards to populate their eligibility profile automatically.
