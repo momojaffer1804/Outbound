@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-from fastapi import FastAPI, Query, File, UploadFile
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -62,7 +62,6 @@ from reranker import rerank
 from detect_conflicts import detect_conflicts
 from scraper_cache import scraper_cache
 from coursework_auditor import audit_coursework
-from document_parser import extract_text_from_pdf, parse_academic_document
 
 app = FastAPI(title="Outbound Eligibility API")
 
@@ -379,25 +378,6 @@ class CourseworkAuditRequest(BaseModel):
 @app.post("/audit/coursework")
 def audit_coursework_endpoint(request: CourseworkAuditRequest):
     return audit_coursework(credits=request.credits, credit_system=request.credit_system)
-
-
-# --- DOCUMENT UPLOAD & EXTRACTION ENDPOINT ---
-
-@app.post("/profile/parse-document")
-async def parse_document_endpoint(file: UploadFile = File(...)):
-    contents = await file.read()
-    filename = (file.filename or "").lower()
-
-    if filename.endswith(".pdf"):
-        text = extract_text_from_pdf(contents)
-    else:
-        try:
-            text = contents.decode("utf-8", errors="ignore")
-        except Exception:
-            text = ""
-
-    parsed = parse_academic_document(text)
-    return parsed
 
 
 # --- CACHE ADMIN ENDPOINTS ---

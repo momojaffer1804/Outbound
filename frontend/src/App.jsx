@@ -193,69 +193,6 @@ function getSourceInfo(url) {
   return { name: 'Official Website', type: 'Official Source', isOfficial: true }
 }
 
-function DocumentUploadWidget({ onProfileExtracted }) {
-  const [uploading, setUploading] = useState(false)
-  const [extractedNotice, setExtractedNotice] = useState(null)
-  const fileInputRef = useRef(null)
-
-  const handleFileUpload = async (file) => {
-    if (!file) return
-    setUploading(true)
-    setExtractedNotice(null)
-    const formData = new FormData()
-    formData.append('file', file)
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/profile/parse-document`, {
-        method: 'POST',
-        body: formData,
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      onProfileExtracted(data)
-      const fields = data.detected_fields && data.detected_fields.length > 0 ? data.detected_fields.join(', ') : 'Profile parameters'
-      setExtractedNotice({ type: 'success', text: `Auto-populated from ${file.name}: ${fields}` })
-    } catch (err) {
-      setExtractedNotice({ type: 'error', text: `Failed to parse document: ${err.message}` })
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  return (
-    <div className="section-panel" style={{ background: 'var(--bg-surface-elevated)', border: '1px dashed var(--border-focus)', marginBottom: '1.5rem', textAlign: 'center', padding: '1.25rem' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-        <div style={{ fontSize: '1.25rem' }}>📄</div>
-        <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>Auto-Fill Profile with Transcript / Scorecard</div>
-        <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', maxWidth: '500px' }}>
-          Upload your unofficial academic transcript, GRE scorecard, or IELTS/TOEFL report (PDF) to auto-populate your eligibility form.
-        </p>
-        <input
-          type="file"
-          accept=".pdf,.txt"
-          ref={fileInputRef}
-          style={{ display: 'none' }}
-          onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])}
-        />
-        <button
-          type="button"
-          className="tab-btn"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '0.5rem 1.25rem', marginTop: '0.25rem' }}
-          disabled={uploading}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {uploading ? 'Parsing Document...' : 'Choose PDF File'}
-        </button>
-      </div>
-      {extractedNotice && (
-        <div style={{ marginTop: '0.85rem', padding: '0.6rem 1rem', borderRadius: '6px', fontSize: '0.85rem', background: extractedNotice.type === 'error' ? 'var(--status-unmet-bg)' : 'var(--status-met-bg)', color: extractedNotice.type === 'error' ? 'var(--status-unmet-text)' : 'var(--status-met-text)' }}>
-          {extractedNotice.text}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function CourseworkAuditorView() {
   const [credits, setCredits] = useState({
     theoretical_cs: 24,
@@ -787,24 +724,6 @@ export default function App() {
   const set = (key) => (e) => setProfile((p) => ({ ...p, [key]: e && e.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }))
   const setDynamic = (key) => (e) => setDynamicProfile((p) => ({ ...p, [key]: e.target.value }))
 
-  const handleDocumentExtracted = (extracted) => {
-    setProfile(prev => ({
-      ...prev,
-      flow: 'near_term',
-      cgpa: extracted.cgpa !== null && extracted.cgpa !== undefined ? extracted.cgpa : prev.cgpa,
-      gre_quant_scaled: extracted.gre_quant_scaled || prev.gre_quant_scaled,
-      gre_quant_percentile: extracted.gre_quant_percentile || prev.gre_quant_percentile,
-      gre_verbal_percentile: extracted.gre_verbal_percentile || prev.gre_verbal_percentile,
-      gre_awa: extracted.gre_awa || prev.gre_awa,
-      english_test_type: extracted.english_test_type || prev.english_test_type,
-      english_score: extracted.english_score || prev.english_score,
-      citizenship: extracted.citizenship || prev.citizenship,
-      undergrad_country: extracted.undergrad_country || prev.undergrad_country,
-      gate_score_reported: extracted.gate_score_reported !== undefined ? extracted.gate_score_reported : prev.gate_score_reported,
-      undergrad_institution_english_medium: extracted.undergrad_institution_english_medium !== null ? extracted.undergrad_institution_english_medium : prev.undergrad_institution_english_medium,
-    }))
-  }
-
   const filteredUniversities = availableUniversities.filter((u) => countryMode === 'all' || selectedCountries.includes(u.country || deriveCountry(u.university)))
   const isNearTerm = profile.flow === 'near_term'
   const isGermanyInScope = appMode === 'check' 
@@ -844,7 +763,6 @@ export default function App() {
 
       {(appMode === 'check' || appMode === 'compare') && (
         <>
-          <DocumentUploadWidget onProfileExtracted={handleDocumentExtracted} />
 
           <form onSubmit={handleSubmit}>
             <div className="section-panel">
